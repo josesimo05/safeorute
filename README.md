@@ -13,7 +13,7 @@ npm run dev
 
 En Windows también puedes abrir `INICIAR-WINDOWS.bat`; instala dependencias si faltan y muestra la dirección local.
 
-Abre la URL de la terminal. No necesitas configurar servicios para la demostración. Los datos de ejemplo son ficticios y todos los reportes locales están identificados como simulados.
+Abre la URL de la terminal. La configuración web del proyecto Firebase `saferoute-f87c1` ya está incluida. La app inicia en modo comunidad; las reglas, la base de datos y los proveedores de Authentication deben estar habilitados en ese proyecto. Para probar sin servicios externos, ejecuta `npm run dev -- --mode demo`: los datos de ejemplo son ficticios y los reportes locales están identificados como simulados.
 
 ## 2. Qué funciona
 
@@ -30,19 +30,26 @@ Abre la URL de la terminal. No necesitas configurar servicios para la demostraci
 - Diseño móvil con barra inferior, controles grandes, modo oscuro/claro guardado y formulario de reporte rápido con categoría y ubicación; el detalle queda opcional.
 - Registro e inicio de sesión por correo con Firebase Authentication. Los reportes públicos continúan sin mostrar el correo. En modo demostración el alta está desactivada hasta conectar Firebase.
 - En demostración: persistencia en este navegador y moderación local de los pendientes.
-- PWA con manifest, iconos y service worker. Después de una primera visita a la versión de producción, la interfaz funciona sin conexión. Los mapas base de OpenStreetMap y Firebase necesitan internet. No se descargan mapas masivamente.
+- PWA instalable con manifest, iconos para Android/iOS y service worker. La app avisa cuando queda disponible sin conexión y pide confirmación antes de aplicar una actualización. Los mapas, rutas y servicios conectados necesitan internet; no se descargan mapas masivamente.
 - API de IA en Vercel que sugiere categoría y necesidad de revisión, con autenticación y cuotas. El botón “Sugerir categoría” usa reglas de palabras clave, no IA.
 
-## 3. Conectar Firebase
+## 3. Firebase: proyecto saferoute-f87c1
 
-1. Crea tu proyecto en https://console.firebase.google.com/ y registra una app web.
-2. En Authentication → Sign-in method, activa Anónimo y Correo electrónico/contraseña.
-3. Crea Cloud Firestore; no dejes reglas públicas de prueba.
-4. Copia `.env.example` a `.env.local` y completa las cuatro variables `VITE_FIREBASE_*` de la configuración de tu app. Nunca subas `.env.local` a GitHub.
-5. Copia `firestore.rules` en Firestore → Reglas y publica. Alternativamente, configura Firebase CLI y ejecuta `firebase deploy --only firestore:rules`.
-6. Reinicia `npm run dev`. La etiqueta pasará de “Demostración” a “Comunidad · Firebase”. Los ejemplos locales no se suben.
-7. Envía un reporte. Aparecerá en Firestore con `status: pending`. El mapa público consulta sólo `status: approved`.
-8. El equipo revisa los hechos y datos personales en la consola Firebase. Cambia `status` a `approved` para publicar o `rejected` para rechazar. No existe una pantalla de administrador público en modo Firebase.
+La configuración web proporcionada está en `src/firebase-config.js`; no hace falta copiar variables para conectar este proyecto. No se activa Analytics. Verifica estos requisitos en la consola:
+
+1. En Authentication → Sign-in method, activa Anónimo y Correo electrónico/contraseña.
+2. Crea la base de datos `(default)` en Cloud Firestore si todavía no existe; no dejes reglas públicas de prueba.
+3. Para cambiar de proyecto, copia `.env.example` a `.env.local` y reemplaza las cuatro variables `VITE_FIREBASE_*` juntas (`apiKey`, `authDomain`, `projectId`, `appId`). No mezcles identificadores de distintos proyectos. Nunca subas `.env.local` a GitHub. Reinicia Vite o recompila al cambiar variables.
+4. Copia `firestore.rules` en Firestore → Reglas y publica. Alternativamente, configura Firebase CLI y ejecuta `firebase deploy --only firestore:rules --project saferoute-f87c1`. El archivo `.firebaserc` también selecciona este proyecto por defecto.
+5. Ejecuta `npm run dev`. La etiqueta “Comunidad · Firebase” indica el modo configurado; comprueba que la consulta de reportes termina sin error. Esa etiqueta por sí sola no verifica permisos ni conectividad. Los ejemplos locales no se suben.
+6. Envía un reporte. Aparecerá en Firestore con `status: pending`. El mapa público consulta sólo `status: approved`.
+7. El equipo revisa los hechos y datos personales en la consola Firebase. Cambia `status` a `approved` para publicar o `rejected` para rechazar. No existe una pantalla de administrador público en modo Firebase.
+
+Para probar sin conexión al proyecto, ejecuta `npm run dev -- --mode demo`, compila con `npm run build -- --mode demo` o define `VITE_DEMO_MODE=true`. El modo comunidad no muestra la moderación local ni guarda reportes reales offline.
+
+La configuración web de Firebase es pública y se incluye en la compilación de la PWA. No utiliza un archivo de cuenta de servicio ni una clave privada. La cuenta de servicio solo es necesaria para la API opcional de IA en el servidor; configúrala como secreto del servidor, nunca dentro del cliente ni del ZIP. Si una clave privada se comparte en un chat o repositorio, revócala y reemplázala antes de usar esa cuenta.
+
+Al conectar Firestore, el mapa puede quedar sin reportes: los ejemplos locales no se copian a la base real. Un reporte nuevo queda pendiente hasta que un moderador lo apruebe en la consola.
 
 Las reglas impiden que el cliente apruebe, modifique o borre reportes. La escritura utiliza un lote con un documento técnico de límite por sesión anónima: un envío cada 60 segundos. Ese documento no es público ni se guarda dentro del reporte. La moderación desde consola depende de los permisos IAM del proyecto. El anonimato es frente al público; los proveedores pueden procesar identificadores técnicos y registros de conexión.
 
@@ -68,7 +75,7 @@ git remote add origin https://github.com/TU_USUARIO/saferoute.git
 git push -u origin main
 ```
 
-En https://vercel.com/ → Add New Project → importa el repositorio. Framework: Vite; build: `npm run build`; salida: `dist`. Define las variables `VITE_FIREBASE_*` y `VITE_TOMTOM_API_KEY` para cuentas y navegación conectadas. Publica y agrega el dominio de Vercel a los dominios autorizados de Firebase Authentication y reCAPTCHA. Los cambios en variables VITE requieren un nuevo despliegue.
+En https://vercel.com/ → Add New Project → importa el repositorio. Framework: Vite; build: `npm run build`; salida: `dist`. Firebase ya apunta a `saferoute-f87c1`. Define las cuatro variables `VITE_FIREBASE_*` solo si quieres reemplazar ese proyecto y `VITE_TOMTOM_API_KEY` para activar la navegación. Publica y agrega el dominio de Vercel a los dominios autorizados de Firebase Authentication y reCAPTCHA. Los cambios en variables VITE requieren un nuevo despliegue.
 
 No se ha creado un repositorio ni un despliegue en tus cuentas; este paquete contiene el código y configuración completos.
 
@@ -94,7 +101,27 @@ npm run preview
 
 Prueba: filtrar, elegir un lugar, enviar, abrir Moderación y aprobar (modo demo), volver al mapa, recargar y confirmar persistencia. En Recorrido selecciona dos puntos. En Patrones comprueba los conteos con la lista. En móvil prueba ubicación permitida/denegada, sugerencias de dirección, rutas con y sin tráfico, lugares, modo oscuro/claro, registro de cuenta y diseño vertical. Instala desde el menú del navegador cuando esté disponible; en iPhone usa Compartir → Añadir a pantalla de inicio. La instalación requiere HTTPS o localhost y soporte del navegador.
 
-Para probar offline usa la versión construida: visita y recarga con conexión, luego desconecta. La interfaz y los ejemplos deben seguir; el mapa base puede desaparecer. Los reportes reales no se encolan sin conexión: un fallo de envío se muestra al usuario.
+### Instalar la PWA y usarla sin conexión
+
+1. Compila con `npm run build` y sirve `dist` con `npm run preview`, o despliega en Vercel con HTTPS. El servidor `npm run dev` no activa el service worker: sirve para desarrollar, no para comprobar instalación u offline.
+2. Abre la app con conexión y espera el aviso de disponibilidad sin conexión. En Chrome/Edge para Android o escritorio, usa **Instalar app** cuando el navegador lo permita; también puede aparecer en su menú. En iPhone/iPad abre Safari, pulsa **Compartir → Añadir a pantalla de inicio** y confirma. La app muestra instrucciones cuando no hay instalación automática.
+3. Abre SafeRoute desde su icono: debe iniciar en su propia ventana. Los iconos incluyen una variante adaptable con margen para el recorte de Android y un icono de pantalla de inicio para iOS.
+4. Para probar offline, recarga una vez con conexión después de activar el service worker, desconecta y vuelve a abrir la app. La interfaz, los filtros y los reportes simulados guardados en ese navegador siguen disponibles. OpenStreetMap/TomTom, rutas, búsquedas, Firebase, cuentas e IA necesitan conexión. Los reportes reales no se guardan en una cola offline ni se envían automáticamente al reconectar.
+5. Cuando haya otra versión, la app ofrece actualizar o hacerlo más tarde. Termina de guardar cualquier formulario antes de aceptar: aplicar la actualización recarga la app. Una actualización pospuesta no debe interrumpir lo que estás escribiendo.
+
+La instalación y el service worker requieren HTTPS o localhost y dependen del soporte del navegador. Una dirección HTTP de la red Wi-Fi no equivale a localhost en el teléfono. No borres los datos del sitio si quieres conservar los reportes de demostración. La PWA guarda la interfaz, no respuestas privadas de las API ni mapas para navegación sin conexión.
+
+Para revisar una nueva versión en Chrome/Edge DevTools: **Application → Manifest** debe mostrar el nombre, iconos y URL de inicio; **Service Workers** debe mostrar el registro activo. Activa **Network → Offline**, recarga y comprueba que funcionan filtros y reportes simulados; después restaura la conexión. Para comprobar actualizaciones, conserva una pestaña de la versión anterior, publica otra compilación y confirma que aparece el aviso sin recargar hasta pulsar actualizar. En Vercel, `sw.js` y el manifest se sirven con revalidación para detectar versiones nuevas.
+
+### Pruebas automatizadas de la PWA
+
+La primera vez instala Chromium para Playwright con `npx playwright install chromium`; en Linux, si faltan bibliotecas del sistema, usa `npx playwright install --with-deps chromium`. Después ejecuta:
+
+```bash
+npm run test:pwa
+```
+
+El comando compila una versión de demostración aislada en `.pwa-test-dist` y ejecuta cinco casos en Chromium, sin contactar ni escribir en Firebase real y sin reemplazar la compilación de producción en `dist`: manifest/iconos e instalación, recarga sin conexión con reportes locales y filtros, instrucciones para iPhone mediante emulación, un aviso nativo de instalación simulado y una actualización real del service worker que espera confirmación. La emulación de iPhone no sustituye una prueba en Safari real. Para usar un Chromium ya instalado, define `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` con la ruta de su ejecutable antes del comando.
 
 ## 7. Alcance y pruebas
 
@@ -110,6 +137,7 @@ No hay datos oficiales verificados, alertas de velocidad, seguimiento GPS contin
 - `src/style.css`: colores, diseño y adaptación al teléfono.
 - `src/logic.js`: validación, clasificación por reglas y cálculos geográficos.
 - `src/store.js`: almacenamiento local o Firebase.
+- `src/firebase-config.js`: configuración web pública de Firebase y selección de modo comunidad/demostración.
 - `api/analyze.js`: autenticación, cuotas y consulta de IA en servidor.
 - `firestore.rules`: acceso y validación de Firebase.
 - `vite.config.js`: compilación y PWA.

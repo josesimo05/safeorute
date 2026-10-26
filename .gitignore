@@ -3,3 +3,6 @@ dist/
 .env
 .env.local
 .vercel/
+playwright-report/
+test-results/
+.pwa-test-dist/

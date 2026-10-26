@@ -3,10 +3,12 @@ import {getAuth,signInAnonymously,createUserWithEmailAndPassword,signInWithEmail
 import {getFirestore,collection,query,where,onSnapshot,doc,writeBatch,serverTimestamp} from 'firebase/firestore';
 import {initializeAppCheck,ReCaptchaV3Provider} from 'firebase/app-check';
 import {seed} from './logic';
+import {firebaseSettings} from './firebase-config';
 const e=import.meta.env;
-export const cloud=Boolean(e.VITE_FIREBASE_API_KEY&&e.VITE_FIREBASE_AUTH_DOMAIN&&e.VITE_FIREBASE_PROJECT_ID&&e.VITE_FIREBASE_APP_ID);
+const settings=firebaseSettings(e);
+export const cloud=settings.cloud;
 let db,auth;
-if(cloud){const app=initializeApp({apiKey:e.VITE_FIREBASE_API_KEY,authDomain:e.VITE_FIREBASE_AUTH_DOMAIN,projectId:e.VITE_FIREBASE_PROJECT_ID,appId:e.VITE_FIREBASE_APP_ID});if(e.VITE_FIREBASE_APPCHECK_SITE_KEY)initializeAppCheck(app,{provider:new ReCaptchaV3Provider(e.VITE_FIREBASE_APPCHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});db=getFirestore(app);auth=getAuth(app);}
+if(cloud){const app=initializeApp(settings.config);if(e.VITE_FIREBASE_APPCHECK_SITE_KEY)initializeAppCheck(app,{provider:new ReCaptchaV3Provider(e.VITE_FIREBASE_APPCHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});db=getFirestore(app);auth=getAuth(app);}
 const key='saferoute-demo-v1';
 export function localRows(){try{const s=localStorage.getItem(key);return s?JSON.parse(s):seed();}catch{return seed();}}
 export function watch(onRows,onError){if(!cloud){onRows(localRows());return ()=>{};}return onSnapshot(query(collection(db,'reports'),where('status','==','approved')),s=>onRows(s.docs.map(d=>({id:d.id,...d.data()}))),onError);}

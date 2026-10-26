@@ -85,3 +85,25 @@ html[data-theme="dark"] .leaflet-popup-content-wrapper,html[data-theme="dark"] .
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
 .quick-label{font-weight:800;font-size:13px;margin:12px 0 8px}.quick-label small{display:inline;font-size:10px;margin-left:5px}.quick-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:15px}.quick-choices button{display:flex;align-items:center;gap:7px;text-align:left;font-size:10px;min-height:40px;padding:8px}.quick-choices i{display:inline-block;width:9px;height:9px;border-radius:50%;flex:none}.quick-choices .quick-selected{border-color:#398264;background:var(--surface-soft);box-shadow:inset 0 0 0 1px #398264}
+
+/* Installation and updates stay in the page, clear of map and form controls. */
+.pwa-panel{margin:0 0 20px;padding:16px 18px;background:var(--surface);border:1px solid var(--line);border-radius:14px;color:var(--ink)}
+.pwa-summary,.pwa-update{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.pwa-panel strong{font-size:13px}
+.pwa-panel p{margin:5px 0 0;font-size:12px;line-height:1.6;color:var(--muted)}
+.pwa-panel button{flex-shrink:0;min-height:44px;font-size:12px}
+.pwa-help,.pwa-update{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.pwa-help .text{margin-top:8px}
+@media(display-mode:standalone){
+ header{padding-top:max(10px,env(safe-area-inset-top));padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right));height:auto;min-height:88px}
+}
+@media(max-width:900px){
+ body{padding-bottom:calc(80px + env(safe-area-inset-bottom,0px))}
+ nav{bottom:calc(9px + env(safe-area-inset-bottom,0px))}
+ .toast{bottom:calc(82px + env(safe-area-inset-bottom,0px))}
+ .overlay{padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}
+ .pwa-panel{padding:14px;margin-bottom:14px}
+ .pwa-summary,.pwa-update{align-items:flex-start;flex-direction:column;gap:10px}
+ .pwa-panel .secondary,.pwa-update .primary{width:100%}
+ @media(display-mode:standalone){header{min-height:62px}}
+}
