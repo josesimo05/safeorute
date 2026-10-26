@@ -47,6 +47,10 @@ La configuración web proporcionada está en `src/firebase-config.js`; no hace f
 
 Para probar sin conexión al proyecto, ejecuta `npm run dev -- --mode demo`, compila con `npm run build -- --mode demo` o define `VITE_DEMO_MODE=true`. El modo comunidad no muestra la moderación local ni guarda reportes reales offline.
 
+Si al enviar un reporte sin iniciar sesión falla `accounts:signUp` con HTTP 400, la app está intentando obtener una sesión anónima antes de escribir en Firestore. Revisa **Authentication → Método de acceso → Anónimo**. `ADMIN_ONLY_OPERATION` o `OPERATION_NOT_ALLOWED` indican un método no habilitado; `CONFIGURATION_NOT_FOUND` requiere terminar la configuración de Authentication. Si el proveedor ya está habilitado, revisa `error.message` en la respuesta de esa petición para distinguir problemas de clave, restricciones u otras causas. La app conserva el formulario y muestra un aviso específico para los errores conocidos; no se considera guardado un reporte cuando falla la autenticación.
+
+`npm run test:firebase` comprueba estos tres rechazos HTTP con el SDK de Firebase en Chromium y respuestas simuladas. No crea usuarios ni escribe reportes en el proyecto real. Usa la misma instalación de Chromium y la variable `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` documentadas para las pruebas PWA.
+
 La configuración web de Firebase es pública y se incluye en la compilación de la PWA. No utiliza un archivo de cuenta de servicio ni una clave privada. La cuenta de servicio solo es necesaria para la API opcional de IA en el servidor; configúrala como secreto del servidor, nunca dentro del cliente ni del ZIP. Si una clave privada se comparte en un chat o repositorio, revócala y reemplázala antes de usar esa cuenta.
 
 Al conectar Firestore, el mapa puede quedar sin reportes: los ejemplos locales no se copian a la base real. Un reporte nuevo queda pendiente hasta que un moderador lo apruebe en la consola.
