@@ -23,9 +23,9 @@ Abre la URL de la terminal. La configuración web del proyecto Firebase `saferou
 - Validación de longitud, fecha, ubicación, enlaces, teléfonos y correos. No sustituye una revisión de otros datos personales.
 - Posibles duplicados: misma categoría, menos de 180 m y hasta una hora. En Firebase compara sólo reportes aprobados visibles; la revisión humana debe cotejar los pendientes.
 - Patrones por categoría y horario, con los filtros actuales.
-- Planificador móvil: busca direcciones del origen/destino, usa tu ubicación, deja elegir lugares en el mapa y calcula la ruta a la hora de salida seleccionada. TomTom devuelve la ruta más rápida y hasta cinco alternativas con tráfico. Puede devolver menos de cinco si la red vial no ofrece suficientes alternativas; la app no inventa rutas.
+- Planificador móvil: busca direcciones del origen/destino en República Dominicana, usa tu ubicación y deja elegir lugares en el mapa. Geoapify calcula rutas con los criterios `balanced` y `short`; la app elimina geometrías repetidas y muestra hasta dos rutas distintas, según la red vial disponible. Los tiempos son estimaciones sin tráfico en tiempo real ni selección de hora de salida.
 - Al seleccionar una ruta, el indicador cuenta reportes comunitarios aprobados a 150 m de la geometría, sin afirmar que el trayecto sea seguro/peligroso. Las rutas con tiempos dentro del 30% del más rápido se destacan; las más largas siguen visibles con su diferencia de tiempo.
-- Busca gasolineras, farmacias, supermercados y hospitales cerca del punto medio de la ruta elegida. Leyenda con símbolos en el mapa.
+- Busca gasolineras, farmacias, supermercados y hospitales en un radio de 5 km alrededor del punto medio de la ruta elegida. Leyenda con símbolos en el mapa.
 - Botones para escuchar un breve resumen con la voz del navegador y abrir el destino en Google Maps, Apple Maps o Waze. Esas apps recalculan el camino; no reciben la alternativa elegida ni los avisos.
 - Diseño móvil con barra inferior, controles grandes, modo oscuro/claro guardado y formulario de reporte rápido con categoría y ubicación; el detalle queda opcional.
 - Registro e inicio de sesión por correo con Firebase Authentication. Los reportes públicos continúan sin mostrar el correo. En modo demostración el alta está desactivada hasta conectar Firebase.
@@ -61,9 +61,9 @@ Para un piloto público: configura Firebase App Check con reCAPTCHA v3, completa
 
 ### Activar navegación y lugares
 
-1. Crea una cuenta de desarrollador TomTom y una API key habilitada para Routing, Search y Map Display. En `.env.local`, asigna `VITE_TOMTOM_API_KEY=TU_CLAVE` y reinicia Vite.
-2. En producción, agrega la misma variable a Vercel y despliega de nuevo. Restringe la clave a los dominios de prueba y producción de SafeRoute; esta variable se incluye en el cliente web, así que debe limitarse por dominio/cuota.
-3. TomTom se usa para el mapa nocturno, rutas/tiempos con tráfico, búsqueda de direcciones y lugares. La alternativa depende de qué calles y caminos existan para ese trayecto. Datos del proveedor requieren Internet y pueden tener cuota o costo según la cuenta.
+1. Crea una cuenta Geoapify y una API key para Maps, Geocoding, Routing y Places. En `.env.local`, asigna `VITE_GEOAPIFY_API_KEY=TU_CLAVE` y reinicia Vite. Este archivo está ignorado por Git; no publiques la clave en el repositorio.
+2. En Vercel, configura `VITE_GEOAPIFY_API_KEY` en el proyecto de `safeorute.vercel.app` y vuelve a compilar/desplegar. Guardarla en `.env.local` no la configura en Vercel. La clave se incluye en el navegador: restríngela al sitio desplegado y a los orígenes de desarrollo local que necesites, y configura cuotas en Geoapify.
+3. Geoapify sirve los mapas raster `osm-carto` en modo claro y `dark-matter` en modo oscuro, las direcciones filtradas a República Dominicana (`countrycode:do`), las rutas y los lugares. Routing consulta los tipos `balanced` y `short` y elimina geometrías idénticas: puede haber hasta dos rutas distintas. Los tiempos no incluyen tráfico en tiempo real y no se envía una hora de salida. Los servicios requieren Internet y pueden tener cuota o costo según la cuenta.
 4. Para abrir la ruta fuera de SafeRoute, toca Google Maps, Apple Maps o Waze. Para usar la navegación activa desde una pantalla CarPlay, SafeRoute necesita una app iOS nativa, solicitar a Apple el entitlement de navegación y pasar su revisión. Una PWA no se convierte en app CarPlay al instalarse; este paquete abre el proveedor externo y no integra CarPlay nativamente.
 
 ## 4. GitHub y Vercel
@@ -79,9 +79,9 @@ git remote add origin https://github.com/TU_USUARIO/saferoute.git
 git push -u origin main
 ```
 
-En https://vercel.com/ → Add New Project → importa el repositorio. Framework: Vite; build: `npm run build`; salida: `dist`. Firebase ya apunta a `saferoute-f87c1`. Define las cuatro variables `VITE_FIREBASE_*` solo si quieres reemplazar ese proyecto y `VITE_TOMTOM_API_KEY` para activar la navegación. Publica y agrega el dominio de Vercel a los dominios autorizados de Firebase Authentication y reCAPTCHA. Los cambios en variables VITE requieren un nuevo despliegue.
+En https://vercel.com/ → Add New Project → importa el repositorio. Framework: Vite; build: `npm run build`; salida: `dist`. Firebase ya apunta a `saferoute-f87c1`. Define las cuatro variables `VITE_FIREBASE_*` solo si quieres reemplazar ese proyecto y `VITE_GEOAPIFY_API_KEY` para activar mapas, navegación y lugares. En el proyecto existente de `safeorute.vercel.app`, agrega esta variable y vuelve a compilar/desplegar. Publica y agrega el dominio de Vercel a los dominios autorizados de Firebase Authentication y reCAPTCHA. Los cambios en variables VITE requieren una nueva compilación y despliegue.
 
-No se ha creado un repositorio ni un despliegue en tus cuentas; este paquete contiene el código y configuración completos.
+La configuración local no confirma que la variable esté guardada en Vercel. Para este cambio no se dispone de credenciales de Vercel; la variable y el nuevo despliegue deben configurarse desde tu cuenta.
 
 ## 5. Activar IA real
 
@@ -103,14 +103,14 @@ npm run build
 npm run preview
 ```
 
-Prueba: filtrar, elegir un lugar, enviar, abrir Moderación y aprobar (modo demo), volver al mapa, recargar y confirmar persistencia. En Recorrido selecciona dos puntos. En Patrones comprueba los conteos con la lista. En móvil prueba ubicación permitida/denegada, sugerencias de dirección, rutas con y sin tráfico, lugares, modo oscuro/claro, registro de cuenta y diseño vertical. Instala desde el menú del navegador cuando esté disponible; en iPhone usa Compartir → Añadir a pantalla de inicio. La instalación requiere HTTPS o localhost y soporte del navegador.
+Prueba: filtrar, elegir un lugar, enviar, abrir Moderación y aprobar (modo demo), volver al mapa, recargar y confirmar persistencia. En Recorrido selecciona dos puntos. En Patrones comprueba los conteos con la lista. En móvil prueba ubicación permitida/denegada, sugerencias de dirección, rutas y sus tiempos estimados, lugares, modo oscuro/claro, registro de cuenta y diseño vertical. Instala desde el menú del navegador cuando esté disponible; en iPhone usa Compartir → Añadir a pantalla de inicio. La instalación requiere HTTPS o localhost y soporte del navegador.
 
 ### Instalar la PWA y usarla sin conexión
 
 1. Compila con `npm run build` y sirve `dist` con `npm run preview`, o despliega en Vercel con HTTPS. El servidor `npm run dev` no activa el service worker: sirve para desarrollar, no para comprobar instalación u offline.
 2. Abre la app con conexión y espera el aviso de disponibilidad sin conexión. En Chrome/Edge para Android o escritorio, usa **Instalar app** cuando el navegador lo permita; también puede aparecer en su menú. En iPhone/iPad abre Safari, pulsa **Compartir → Añadir a pantalla de inicio** y confirma. La app muestra instrucciones cuando no hay instalación automática.
 3. Abre SafeRoute desde su icono: debe iniciar en su propia ventana. Los iconos incluyen una variante adaptable con margen para el recorte de Android y un icono de pantalla de inicio para iOS.
-4. Para probar offline, recarga una vez con conexión después de activar el service worker, desconecta y vuelve a abrir la app. La interfaz, los filtros y los reportes simulados guardados en ese navegador siguen disponibles. OpenStreetMap/TomTom, rutas, búsquedas, Firebase, cuentas e IA necesitan conexión. Los reportes reales no se guardan en una cola offline ni se envían automáticamente al reconectar.
+4. Para probar offline, recarga una vez con conexión después de activar el service worker, desconecta y vuelve a abrir la app. La interfaz, los filtros y los reportes simulados guardados en ese navegador siguen disponibles. Los mapas de Geoapify/OpenStreetMap, rutas, búsquedas, Firebase, cuentas e IA necesitan conexión. Los reportes reales no se guardan en una cola offline ni se envían automáticamente al reconectar.
 5. Cuando haya otra versión, la app ofrece actualizar o hacerlo más tarde. Termina de guardar cualquier formulario antes de aceptar: aplicar la actualización recarga la app. Una actualización pospuesta no debe interrumpir lo que estás escribiendo.
 
 La instalación y el service worker requieren HTTPS o localhost y dependen del soporte del navegador. Una dirección HTTP de la red Wi-Fi no equivale a localhost en el teléfono. No borres los datos del sitio si quieres conservar los reportes de demostración. La PWA guarda la interfaz, no respuestas privadas de las API ni mapas para navegación sin conexión.
@@ -127,15 +127,15 @@ La primera vez instala Chromium para Playwright con `npx playwright install chro
 npm run test:pwa
 ```
 
-El comando compila una versión de demostración aislada en `.pwa-test-dist` y ejecuta siete casos en Chromium, sin contactar ni escribir en Firebase real y sin reemplazar la compilación de producción en `dist`: manifest/iconos e instalación, recarga sin conexión con reportes locales y filtros, instrucciones para iPhone mediante emulación, un aviso nativo de instalación simulado y una actualización real del service worker que espera confirmación y dos casos de recuperación del mapa tras fallos de tiles/cambios de red. La emulación de iPhone no sustituye una prueba en Safari real. Para usar un Chromium ya instalado, define `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` con la ruta de su ejecutable antes del comando.
+El comando compila una versión de demostración aislada en `.pwa-test-dist` y ejecuta nueve casos en Chromium, sin contactar ni escribir en Firebase real y sin reemplazar la compilación de producción en `dist`: manifest/iconos e instalación, recarga sin conexión con reportes locales y filtros, instrucciones para iPhone mediante emulación, un aviso nativo de instalación simulado, una actualización real del service worker que espera confirmación, dos casos de recuperación del mapa tras fallos de tiles/cambios de red y dos casos de interfaz de navegación. La emulación de iPhone no sustituye una prueba en Safari real. Para usar un Chromium ya instalado, define `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` con la ruta de su ejecutable antes del comando.
 
 ## 7. Alcance y pruebas
 
-Los tests automatizados cubren Haversine, clasificación, umbrales de duplicación, validación, conteo de reportes cercanos a una polilínea, ejemplos y rechazo de solicitudes/respuestas inválidas en la API. No se probaron los servicios TomTom/Firebase con claves reales. No demuestran una precisión del 80 %: para medirla prepara un conjunto independiente etiquetado manualmente y documenta los resultados.
+Los tests automatizados cubren Haversine, clasificación, umbrales de duplicación, validación, conteo de reportes cercanos a una polilínea, ejemplos y rechazo de solicitudes/respuestas inválidas en la API. Las pruebas con la clave real de Geoapify y la conectividad de Firebase requieren verificación independiente; la configuración y las respuestas simuladas no demuestran que esos servicios funcionen en producción. No demuestran una precisión del 80 %: para medirla prepara un conjunto independiente etiquetado manualmente y documenta los resultados.
 
 Las reglas Firebase y llamadas reales a Gemini necesitan pruebas en tu proyecto/Emulator y credenciales; no se verificaron contra servicios reales al preparar este paquete. El build comprueba la aplicación, no sustituye pruebas del navegador, accesibilidad, IAM ni revisión de privacidad. Antes de un piloto público, prueba las reglas con Emulator Suite (rechazo de escrituras no autenticadas, aprobación por cliente, campos extras, lectura de pendientes y abuso de cuotas).
 
-No hay datos oficiales verificados, alertas de velocidad, seguimiento GPS continuo ni garantías sobre seguridad. La ausencia de reportes no significa ausencia de incidentes. Los tiempos corresponden al proveedor de mapas para la hora solicitada; el prototipo no recalcula automáticamente el trayecto mientras conduces. La lectura de voz ofrece un resumen, no instrucciones giro a giro. Conduce siguiendo la navegación que prefieras y nunca uses el teléfono mientras el vehículo está en movimiento.
+No hay datos oficiales verificados, alertas de velocidad, seguimiento GPS continuo ni garantías sobre seguridad. La ausencia de reportes no significa ausencia de incidentes. Los tiempos son estimaciones de Geoapify sin tráfico en tiempo real ni hora de salida; el prototipo no recalcula automáticamente el trayecto mientras conduces. La lectura de voz ofrece un resumen, no instrucciones giro a giro. Conduce siguiendo la navegación que prefieras y nunca uses el teléfono mientras el vehículo está en movimiento.
 
 ## 8. Archivos para aprender y modificar
 
@@ -148,7 +148,9 @@ No hay datos oficiales verificados, alertas de velocidad, seguimiento GPS contin
 - `firestore.rules`: acceso y validación de Firebase.
 - `vite.config.js`: compilación y PWA.
 
-Documentación oficial: https://vite.dev/guide/ · https://firebase.google.com/docs/auth/web/anonymous-auth · https://firebase.google.com/docs/firestore/security/get-started · https://firebase.google.com/docs/auth/admin/verify-id-tokens · https://ai.google.dev/gemini-api/docs/structured-output · https://leafletjs.com/reference.html · https://docs.tomtom.com/routing-api/documentation/tomtom-maps/v1/calculate-route · https://docs.tomtom.com/search-api/documentation/search-service/points-of-interest-search · https://developer.apple.com/documentation/carplay
+Documentación oficial: https://vite.dev/guide/ · https://firebase.google.com/docs/auth/web/anonymous-auth · https://firebase.google.com/docs/firestore/security/get-started · https://firebase.google.com/docs/auth/admin/verify-id-tokens · https://ai.google.dev/gemini-api/docs/structured-output · https://leafletjs.com/reference.html · https://apidocs.geoapify.com/docs/maps/ · https://apidocs.geoapify.com/docs/geocoding/ · https://apidocs.geoapify.com/docs/routing/ · https://apidocs.geoapify.com/docs/places/ · https://developer.apple.com/documentation/carplay
+
+Esquemas OpenAPI de Geoapify: https://github.com/geoapify/geoapify-openapi-specs
 
 ### Probar desde un teléfono en la misma Wi-Fi
 

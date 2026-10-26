@@ -54,7 +54,7 @@ html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="da
 html[data-theme="dark"] .nav-note,html[data-theme="dark"] .hero-tags span,html[data-theme="dark"] .secondary,html[data-theme="dark"] .route-card.selected{background:var(--surface-soft);color:var(--ink)}
 html[data-theme="dark"] .report p,html[data-theme="dark"] .report small,html[data-theme="dark"] .intro p,html[data-theme="dark"] .mode small,html[data-theme="dark"] footer,html[data-theme="dark"] .tiny{color:var(--muted)}
 html[data-theme="dark"] .leaflet-tile-pane{filter:invert(.78) hue-rotate(178deg) brightness(1.08) contrast(.9)}
-html[data-theme="dark"][data-map-provider="tomtom"] .leaflet-tile-pane{filter:brightness(1.18) contrast(.94)}
+html[data-theme="dark"][data-map-provider="geoapify"] .leaflet-tile-pane{filter:none}
 html[data-theme="dark"] .leaflet-popup-content-wrapper,html[data-theme="dark"] .leaflet-popup-tip{background:var(--surface);color:var(--ink)}
 @media(max-width:900px){
  body{padding-bottom:80px}

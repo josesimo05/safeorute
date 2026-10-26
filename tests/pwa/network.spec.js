@@ -8,7 +8,7 @@ test('mantiene el aviso con tiles fallidos y recupera el mapa al reintentar', as
   let fail = true;
   let requests = 0;
   await context.route(/https:\/\/.*/, async route => {
-    if (/https:\/\/[abc]\.tile\.openstreetmap\.org\//.test(route.request().url())) {
+    if (/https:\/\/maps\.geoapify\.com\/v1\/tile\//.test(route.request().url())) {
       requests++;
       if (fail && requests % 2) await route.abort('failed');
       else await route.fulfill({contentType: 'image/png', body: tile});
@@ -37,7 +37,7 @@ test('recarga tiles al volver la conexión y conserva el reporte abierto', async
   let fail = true;
   let requests = 0;
   await context.route(/https:\/\/.*/, async route => {
-    if (/https:\/\/[abc]\.tile\.openstreetmap\.org\//.test(route.request().url())) {
+    if (/https:\/\/maps\.geoapify\.com\/v1\/tile\//.test(route.request().url())) {
       requests++;
       if (fail) await route.abort('internetdisconnected');
       else await route.fulfill({contentType: 'image/png', body: tile});
