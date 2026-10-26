@@ -94,6 +94,8 @@ html[data-theme="dark"] .leaflet-popup-content-wrapper,html[data-theme="dark"] .
 .pwa-panel button{flex-shrink:0;min-height:44px;font-size:12px}
 .pwa-help,.pwa-update{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
 .pwa-help .text{margin-top:8px}
+.map-offline{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.map-offline button{font-size:12px;min-height:40px;flex-shrink:0}
 @media(display-mode:standalone){
  header{padding-top:max(10px,env(safe-area-inset-top));padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right));height:auto;min-height:88px}
 }

@@ -115,6 +115,8 @@ Prueba: filtrar, elegir un lugar, enviar, abrir Moderación y aprobar (modo demo
 
 La instalación y el service worker requieren HTTPS o localhost y dependen del soporte del navegador. Una dirección HTTP de la red Wi-Fi no equivale a localhost en el teléfono. No borres los datos del sitio si quieres conservar los reportes de demostración. La PWA guarda la interfaz, no respuestas privadas de las API ni mapas para navegación sin conexión.
 
+Si aparecen `ERR_NETWORK_CHANGED` o `ERR_NAME_NOT_RESOLVED`, comprueba la conexión y la resolución DNS del dispositivo. Al recibir el evento de reconexión del navegador, la app vuelve a cargar los tiles visibles del mapa; también ofrece **Reintentar mapa** cuando falla la carga. El aviso desaparece cuando ya no quedan tiles fallidos en la vista, sin recargar la página ni borrar el formulario. Firebase conserva los reintentos automáticos del SDK. Una petición `Listen` con `TYPE=terminate` pertenece al cierre del canal y puede fallar durante el cambio de red; por sí sola no demuestra un problema de permisos.
+
 Para revisar una nueva versión en Chrome/Edge DevTools: **Application → Manifest** debe mostrar el nombre, iconos y URL de inicio; **Service Workers** debe mostrar el registro activo. Activa **Network → Offline**, recarga y comprueba que funcionan filtros y reportes simulados; después restaura la conexión. Para comprobar actualizaciones, conserva una pestaña de la versión anterior, publica otra compilación y confirma que aparece el aviso sin recargar hasta pulsar actualizar. En Vercel, `sw.js` y el manifest se sirven con revalidación para detectar versiones nuevas.
 
 ### Pruebas automatizadas de la PWA
@@ -125,7 +127,7 @@ La primera vez instala Chromium para Playwright con `npx playwright install chro
 npm run test:pwa
 ```
 
-El comando compila una versión de demostración aislada en `.pwa-test-dist` y ejecuta cinco casos en Chromium, sin contactar ni escribir en Firebase real y sin reemplazar la compilación de producción en `dist`: manifest/iconos e instalación, recarga sin conexión con reportes locales y filtros, instrucciones para iPhone mediante emulación, un aviso nativo de instalación simulado y una actualización real del service worker que espera confirmación. La emulación de iPhone no sustituye una prueba en Safari real. Para usar un Chromium ya instalado, define `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` con la ruta de su ejecutable antes del comando.
+El comando compila una versión de demostración aislada en `.pwa-test-dist` y ejecuta siete casos en Chromium, sin contactar ni escribir en Firebase real y sin reemplazar la compilación de producción en `dist`: manifest/iconos e instalación, recarga sin conexión con reportes locales y filtros, instrucciones para iPhone mediante emulación, un aviso nativo de instalación simulado y una actualización real del service worker que espera confirmación y dos casos de recuperación del mapa tras fallos de tiles/cambios de red. La emulación de iPhone no sustituye una prueba en Safari real. Para usar un Chromium ya instalado, define `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` con la ruta de su ejecutable antes del comando.
 
 ## 7. Alcance y pruebas
 
