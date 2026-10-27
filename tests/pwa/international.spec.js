@@ -1,6 +1,32 @@
 import {test, expect} from '@playwright/test';
 import {mockGeoapify} from './fixtures';
 
+for (const language of ['ar', 'zh']) {
+  test(`calcula rutas con la interfaz ${language} aunque Routing no admita ese idioma`, async ({page, context}) => {
+    await mockGeoapify(context);
+    const requestedLanguages = [];
+    await page.route('**/v1/routing?**', route => {
+      const lang = new URL(route.request().url()).searchParams.get('lang');
+      requestedLanguages.push(lang);
+      return lang === 'en' ? route.fallback() : route.fulfill({status:400,json:{message:'Unsupported routing language'}});
+    });
+    await page.goto('/');
+    await page.getByRole('button', {name:'Navegar',exact:true}).click();
+    await page.locator('.preferences-button').click();
+    await page.locator('#app-language').selectOption(language);
+    await page.locator('.preferences-dialog .primary').click();
+    await page.locator('#origin').fill('Parque Independencia');
+    await page.getByRole('option').filter({hasText:'Parque Independencia'}).click();
+    await page.locator('#destination').fill('Ágora Mall');
+    await page.getByRole('option').filter({hasText:'Ágora Mall'}).click();
+    await page.locator('.navigator form > .primary').click();
+    await expect(page.locator('.route-card')).toHaveCount(2);
+    await expect(page.locator('html')).toHaveAttribute('lang',language);
+    expect(requestedLanguages).toEqual(['en','en']);
+    await expect(page.getByRole('link',{name:'Waze',exact:true})).toBeVisible();
+  });
+}
+
 test('los ocho idiomas cambian sin conexión y conservan la preferencia', async ({page, context}) => {
   await page.setViewportSize({width:390,height:844});
   await mockGeoapify(context);

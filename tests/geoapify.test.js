@@ -270,6 +270,20 @@ test('routing and nearby requests receive the selected language while preserving
   }
 });
 
+test('Arabic and Chinese UI languages use supported routing instructions and retain their Places language', async () => {
+  for (const language of ['ar', 'zh']) {
+    const {client, requests} = mockClient(url => url.pathname === '/v1/routing'
+      ? url.searchParams.get('lang') === 'en'
+        ? success({features: [feature()]})
+        : {ok: false, status: 400}
+      : success({features: []}));
+    assert.equal((await client.getRoutes(start, end, {language})).length, 1);
+    await client.nearbyPlaces(start, {language});
+    assert.ok(requests.filter(url => url.pathname === '/v1/routing').every(url => url.searchParams.get('lang') === 'en'));
+    assert.ok(requests.filter(url => url.pathname === '/v2/places').every(url => url.searchParams.get('lang') === language));
+  }
+});
+
 test('map themes select official raster styles and missing configuration uses OSM', async () => {
   const {client} = mockClient(() => success({}));
   assert.equal(client.hasRouting, true);

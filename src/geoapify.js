@@ -74,6 +74,14 @@ function normalizedLanguage(language) {
   return /^[a-z]{2}$/.test(code) ? code : 'es';
 }
 
+// Routing supports fewer languages than Geocoding/Places. Keep unsupported UI
+// languages usable by requesting English directions rather than triggering 400.
+const ROUTING_LANGUAGES = new Set(['bg', 'ca', 'cs', 'da', 'de', 'el', 'en', 'es', 'et', 'fi', 'fr', 'hi', 'hu', 'it', 'ja', 'nl', 'pl', 'pt', 'ro', 'ru', 'sk', 'sl', 'sv', 'tr', 'uk']);
+function routingLanguage(language) {
+  const code = normalizedLanguage(language);
+  return ROUTING_LANGUAGES.has(code) ? code : 'en';
+}
+
 function normalizeAddress(properties, source = 'address', geometry, country = 'do') {
   if (!properties || (country && typeof properties.country_code === 'string'
     && properties.country_code.toLowerCase() !== country)) return null;
@@ -249,7 +257,7 @@ export function createGeoapifyClient({apiKey, fetchImpl = globalThis.fetch} = {}
     const results = await Promise.allSettled(preferences.map(async preference => {
       const body = await request('/v1/routing', {
         waypoints: `${from.lat},${from.lon}|${to.lat},${to.lon}`,
-        mode: 'drive', type: preference, units: 'metric', lang: normalizedLanguage(language),
+        mode: 'drive', type: preference, units: 'metric', lang: routingLanguage(language),
         format: 'geojson', traffic: 'free_flow', details: 'instruction_details',
       }, 'calcular la ruta');
       if (!Array.isArray(body?.features)) throw new Error('Geoapify devolvió una ruta no válida. Vuelve a intentar.');
