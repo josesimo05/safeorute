@@ -1,10 +1,12 @@
 import {useEffect, useRef, useState} from 'react';
 import {useRegisterSW} from 'virtual:pwa-register/react';
+import {useI18n} from './LocaleContext';
 
 const standalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const isAppleMobile = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 export default function PwaControls({online, editing, demo}) {
+  const {t} = useI18n();
   const [installed, setInstalled] = useState(standalone);
   const [installEvent, setInstallEvent] = useState(null);
   const [showHelp, setShowHelp] = useState(false);
@@ -15,6 +17,7 @@ export default function PwaControls({online, editing, demo}) {
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState('');
   const [reloadPending, setReloadPending] = useState(false);
+  const detailsRef = useRef(null);
   const editingRef = useRef(editing);
   const registrationRef = useRef(null);
   editingRef.current = editing;
@@ -81,6 +84,10 @@ export default function PwaControls({online, editing, demo}) {
     };
   }, []);
 
+  useEffect(() => {
+    if ((needRefresh || reloadPending || registrationError) && detailsRef.current) detailsRef.current.open = true;
+  }, [needRefresh, reloadPending, registrationError]);
+
   async function install() {
     setInstallError('');
     if (!installEvent) {
@@ -114,37 +121,40 @@ export default function PwaControls({online, editing, demo}) {
     }
   }
 
-  return <section className="pwa-panel" aria-label="Instalación y disponibilidad de SafeRoute">
+  return <details className="pwa-panel" ref={detailsRef} aria-label={t('Instalación y disponibilidad de SafeRoute')}>
+    <summary className="pwa-summary"><strong>{t('Instalar y actualizar')}</strong><span className="pwa-brief">{t(needRefresh || reloadPending ? 'Nueva versión disponible' : online ? 'Con conexión' : 'Sin conexión')}</span></summary>
+    <div className="pwa-body">
     <div className="pwa-summary">
       <div>
-        <strong>{installed ? 'SafeRoute en tu dispositivo' : 'Lleva SafeRoute contigo'}</strong>
+        <strong>{t(installed ? 'SafeRoute en tu dispositivo' : 'Lleva SafeRoute contigo')}</strong>
         <p role="status">{!online
-          ? `Sin conexión. ${demo ? 'Tus reportes locales y los ejemplos siguen disponibles.' : 'Puedes abrir la interfaz.'} Los mapas, las rutas y los servicios en línea necesitan internet.`
+          ? [t('Sin conexión.'), t(demo ? 'Tus reportes locales y los ejemplos siguen disponibles.' : 'Puedes abrir la interfaz.'), t('Los mapas, las rutas y los servicios en línea necesitan internet.')].join(' ')
           : registrationError
-            ? 'No se pudo preparar el uso sin conexión. Recarga con internet para volver a intentarlo.'
+            ? t('No se pudo preparar el uso sin conexión. Recarga con internet para volver a intentarlo.')
             : offlineReady || cached
-              ? 'Interfaz lista para abrir sin conexión. Los mapas y las rutas necesitan internet.'
-              : 'Instala la app para abrirla desde tu pantalla de inicio.'}</p>
+              ? t('Interfaz lista para abrir sin conexión. Los mapas y las rutas necesitan internet.')
+              : t('Instala la app para abrirla desde tu pantalla de inicio.')}</p>
       </div>
       {!installed && <button type="button" className="secondary" disabled={installing} onClick={install} aria-expanded={showHelp} aria-controls="pwa-install-help">
-        {installing ? 'Abriendo instalación…' : 'Instalar app'}
+        {t(installing ? 'Abriendo instalación…' : 'Instalar app')}
       </button>}
     </div>
-    {installError && <p role="alert">{installError}</p>}
+    {installError && <p role="alert">{t(installError)}</p>}
     {showHelp && <div id="pwa-install-help" className="pwa-help">
       {!window.isSecureContext
-        ? <p>Abre SafeRoute desde su dirección HTTPS para instalarla. Una dirección HTTP de la red local solo permite probar el diseño.</p>
+        ? <p>{t('Abre SafeRoute desde su dirección HTTPS para instalarla. Una dirección HTTP de la red local solo permite probar el diseño.')}</p>
         : isAppleMobile()
-          ? <p>En iPhone o iPad, abre esta página en Safari, toca <strong>Compartir</strong> y luego <strong>Añadir a pantalla de inicio</strong>. Confirma con <strong>Añadir</strong>.</p>
-          : <p>En Chrome o Edge, abre el menú <strong>⋮</strong> o <strong>⋯</strong> y elige <strong>Instalar SafeRoute</strong> o <strong>Añadir a pantalla de inicio</strong>. Si no aparece, usa un navegador compatible y visita la versión HTTPS.</p>}
-      <button type="button" className="text" onClick={() => setShowHelp(false)}>Cerrar instrucciones</button>
+          ? <p>{t('En iPhone o iPad, abre esta página en Safari, toca Compartir y luego Añadir a pantalla de inicio. Confirma con Añadir.')}</p>
+          : <p>{t('En Chrome o Edge, abre el menú ⋮ o ⋯ y elige Instalar SafeRoute o Añadir a pantalla de inicio. Si no aparece, usa un navegador compatible y visita la versión HTTPS.')}</p>}
+      <button type="button" className="text" onClick={() => setShowHelp(false)}>{t('Cerrar instrucciones')}</button>
     </div>}
     {(needRefresh || reloadPending) && <div className="pwa-update" role="status">
-      <div><strong>Hay una nueva versión de SafeRoute</strong>
-        <p>{editing ? 'Termina o cierra el formulario para actualizar sin perder lo que escribiste.' : !online ? 'Vuelve a conectarte para actualizar.' : 'Actualiza cuando quieras. La aplicación se volverá a abrir.'}</p>
-        {updateError && <p role="alert">{updateError}</p>}
+      <div><strong>{t('Hay una nueva versión de SafeRoute')}</strong>
+        <p>{t(editing ? 'Termina o cierra el formulario para actualizar sin perder lo que escribiste.' : !online ? 'Vuelve a conectarte para actualizar.' : 'Actualiza cuando quieras. La aplicación se volverá a abrir.')}</p>
+        {updateError && <p role="alert">{t(updateError)}</p>}
       </div>
-      <button type="button" className="primary" disabled={editing || !online || updating} onClick={update}>{updating ? 'Actualizando…' : 'Actualizar ahora'}</button>
+      <button type="button" className="primary" disabled={editing || !online || updating} onClick={update}>{t(updating ? 'Actualizando…' : 'Actualizar ahora')}</button>
     </div>}
-  </section>;
+    </div>
+  </details>;
 }

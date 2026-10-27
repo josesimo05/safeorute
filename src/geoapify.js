@@ -1,6 +1,14 @@
 const API_ORIGIN = 'https://api.geoapify.com';
 const REQUEST_TIMEOUT_MS = 15000;
 const OSM_TILES = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const DEFAULT_SEARCH_BIAS = {lat: 18.48, lon: -69.94};
+const DOMINICAN_REPUBLIC_BOUNDS = 'rect:-72.1,17.4,-68.2,20.1';
+const NAMED_PLACE_CATEGORIES = [
+  'accommodation', 'activity', 'airport', 'amenity', 'beach', 'building', 'camping',
+  'catering', 'commercial', 'education', 'childcare', 'entertainment', 'healthcare',
+  'heritage', 'leisure', 'maritime', 'memorial', 'national_park', 'office', 'parking',
+  'pet', 'production', 'public_transport', 'religion', 'rental', 'service', 'sport', 'tourism',
+].join(',');
 
 const PLACE_TYPES = [
   {category: 'service.vehicle.fuel', icon: '⛽', type: 'Gasolineras'},
@@ -48,6 +56,59 @@ function addressText(properties) {
     : [properties.address_line1, properties.address_line2].filter(value => typeof value === 'string' && value).join(', ');
 }
 
+function normalizedQuery(query) {
+  return typeof query === 'string' ? query.normalize('NFKC').trim().replace(/\s+/g, ' ').slice(0, 1024) : '';
+}
+
+function searchKey(value) {
+  return normalizedQuery(value).normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('es');
+}
+
+function normalizedCountry(country = 'do') {
+  const code = typeof country === 'string' ? country.trim().toLowerCase() : '';
+  return /^[a-z]{2}$/.test(code) ? code : '';
+}
+
+function normalizedLanguage(language) {
+  const code = typeof language === 'string' ? language.trim().toLowerCase().split(/[-_]/)[0] : '';
+  return /^[a-z]{2}$/.test(code) ? code : 'es';
+}
+
+function normalizeAddress(properties, source = 'address', geometry, country = 'do') {
+  if (!properties || (country && typeof properties.country_code === 'string'
+    && properties.country_code.toLowerCase() !== country)) return null;
+  const position = validPoint(properties) ? {lat: properties.lat, lon: properties.lon}
+    : geometry?.type === 'Point' ? coordinatePoint(geometry.coordinates) : null;
+  if (!position) return null;
+  const name = normalizedQuery(properties.name);
+  const address = normalizedQuery(addressText(properties));
+  const label = name && !searchKey(address).includes(searchKey(name)) ? [name, address].filter(Boolean).join(', ') : address || name;
+  if (!label) return null;
+  return {
+    id: properties.place_id || `address-${position.lat}-${position.lon}-${searchKey(name || label)}`,
+    position,
+    address: {freeformAddress: label},
+    type: source === 'poi' || properties.result_type === 'amenity' ? 'poi' : 'address',
+    ...(name ? {name} : {}),
+  };
+}
+
+function uniqueAddresses(addresses) {
+  const ids = new Set();
+  const positions = new Set();
+  return addresses.filter(place => {
+    const signature = `${place.position.lat.toFixed(5)},${place.position.lon.toFixed(5)}:${searchKey(place.name || place.address.freeformAddress)}`;
+    if (ids.has(place.id) || positions.has(signature)) return false;
+    ids.add(place.id);
+    positions.add(signature);
+    return true;
+  }).slice(0, 5);
+}
+
+function cancelledSearch() {
+  return new DOMException('La búsqueda fue cancelada.', 'AbortError');
+}
+
 function normalizeRoute(feature, preference, index) {
   const points = routePoints(feature?.geometry);
   const properties = feature?.properties;
@@ -81,29 +142,38 @@ export function createGeoapifyClient({apiKey, fetchImpl = globalThis.fetch} = {}
   const key = typeof apiKey === 'string' ? apiKey.trim() : '';
   const hasRouting = Boolean(key);
 
-  async function request(path, parameters, action) {
+  async function request(path, parameters, action, signal) {
+    if (signal?.aborted) throw cancelledSearch();
     if (!key) throw new Error('Configura VITE_GEOAPIFY_API_KEY en .env.local para activar los mapas y las rutas.');
     const url = new URL(path, API_ORIGIN);
     url.search = new URLSearchParams({...parameters, apiKey: key});
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const cancel = () => controller.abort();
+    signal?.addEventListener('abort', cancel, {once: true});
+    const timeout = setTimeout(cancel, REQUEST_TIMEOUT_MS);
     try {
       let response;
       try {
         response = await fetchImpl(url, {signal: controller.signal});
       } catch {
+        if (signal?.aborted) throw cancelledSearch();
         throw new Error(controller.signal.aborted
           ? 'Geoapify tardó demasiado en responder. Vuelve a intentar.'
           : 'No se pudo conectar con Geoapify. Revisa tu conexión y vuelve a intentar.');
       }
+      if (signal?.aborted) throw cancelledSearch();
       if (!response.ok) throw serviceError(response.status, action);
       try {
-        return await response.json();
+        const body = await response.json();
+        if (signal?.aborted) throw cancelledSearch();
+        return body;
       } catch {
+        if (signal?.aborted) throw cancelledSearch();
         throw new Error('Geoapify devolvió una respuesta que no se pudo leer. Vuelve a intentar.');
       }
     } finally {
       clearTimeout(timeout);
+      signal?.removeEventListener('abort', cancel);
     }
   }
 
@@ -111,23 +181,67 @@ export function createGeoapifyClient({apiKey, fetchImpl = globalThis.fetch} = {}
     if (!validPoint(point)) throw new Error('Selecciona un punto válido en el mapa.');
   }
 
-  async function geocode(query) {
-    if (typeof query !== 'string' || !query.trim()) return [];
-    const body = await request('/v1/geocode/search', {
-      text: query.trim(), format: 'json', limit: '5', filter: 'countrycode:do', lang: 'es',
-    }, 'buscar la dirección');
-    if (!Array.isArray(body?.results)) throw new Error('Geoapify devolvió una búsqueda no válida. Vuelve a intentar.');
-    return body.results.flatMap((result, index) => {
-      if (!validPoint(result)) return [];
-      return [{
-        id: result.place_id || `address-${result.lat}-${result.lon}-${index}`,
-        position: {lat: result.lat, lon: result.lon},
-        address: {freeformAddress: addressText(result)},
-      }];
-    });
+  function searchParameters(query, {bias, country, language}) {
+    const point = validPoint(bias) ? bias : DEFAULT_SEARCH_BIAS;
+    const code = normalizedCountry(country);
+    return {
+      text: query, format: 'json', limit: '5', ...(code ? {filter: `countrycode:${code}`} : {}),
+      lang: normalizedLanguage(language),
+      bias: `proximity:${point.lon},${point.lat}`,
+    };
   }
 
-  async function getRoutes(from, to) {
+  async function addressSearch(path, query, options = {}) {
+    const body = await request(path, searchParameters(query, options), 'buscar la dirección', options.signal);
+    if (!Array.isArray(body?.results)) throw new Error('Geoapify devolvió una búsqueda no válida. Vuelve a intentar.');
+    return uniqueAddresses(body.results.map(result => normalizeAddress(result, 'address', null, normalizedCountry(options.country))).filter(Boolean));
+  }
+
+  async function namedPlaceSearch(name, {signal, bias, country, language} = {}, candidate) {
+    const code = normalizedCountry(country);
+    const point = validPoint(candidate?.position) ? candidate.position
+      : validPoint(bias) ? bias : DEFAULT_SEARCH_BIAS;
+    // Places requires a spatial filter, and its live API does not support countrycode filters.
+    // Search around the canonical result so a foreign POI is never clipped to Dominican bounds.
+    const filter = !candidate && code === 'do' ? DOMINICAN_REPUBLIC_BOUNDS
+      : `circle:${point.lon},${point.lat},100000`;
+    const body = await request('/v2/places', {
+      name, categories: NAMED_PLACE_CATEGORIES, filter,
+      bias: `proximity:${point.lon},${point.lat}`, limit: '5', lang: normalizedLanguage(language),
+    }, 'buscar el lugar', signal);
+    if (!Array.isArray(body?.features)) throw new Error('Geoapify devolvió lugares no válidos. Vuelve a intentar.');
+    return body.features.map(feature => normalizeAddress(feature?.properties, 'poi', feature?.geometry, code)).filter(Boolean);
+  }
+
+  async function suggestPlaces(query, options = {}) {
+    const text = normalizedQuery(query);
+    if (text.length < 3) return [];
+    const addresses = await addressSearch('/v1/geocode/autocomplete', text, options);
+    // Autocomplete also returns named streets/postcodes. Resolve a canonical name to a real POI
+    // when possible; the Places name filter requires accents and the complete name.
+    const candidate = addresses.find(place => place.name);
+    if (candidate?.type === 'poi' || (addresses.length && !candidate)) return addresses;
+    const places = await namedPlaceSearch(candidate?.name || text, options, candidate);
+    return uniqueAddresses([...places, ...addresses]);
+  }
+
+  async function geocode(query, options = {}) {
+    const text = normalizedQuery(query);
+    if (!text) return [];
+    const results = await Promise.allSettled([
+      suggestPlaces(text, options),
+      addressSearch('/v1/geocode/search', text, options),
+    ]);
+    if (options.signal?.aborted) throw cancelledSearch();
+    const addresses = uniqueAddresses(results.flatMap(result => result.status === 'fulfilled' ? result.value : []));
+    if (!addresses.length) {
+      const failed = results.find(result => result.status === 'rejected');
+      if (failed) throw failed.reason;
+    }
+    return addresses;
+  }
+
+  async function getRoutes(from, to, {language} = {}) {
     requirePoint(from);
     requirePoint(to);
     const preferences = ['balanced', 'short'];
@@ -135,7 +249,7 @@ export function createGeoapifyClient({apiKey, fetchImpl = globalThis.fetch} = {}
     const results = await Promise.allSettled(preferences.map(async preference => {
       const body = await request('/v1/routing', {
         waypoints: `${from.lat},${from.lon}|${to.lat},${to.lon}`,
-        mode: 'drive', type: preference, units: 'metric', lang: 'es',
+        mode: 'drive', type: preference, units: 'metric', lang: normalizedLanguage(language),
         format: 'geojson', traffic: 'free_flow', details: 'instruction_details',
       }, 'calcular la ruta');
       if (!Array.isArray(body?.features)) throw new Error('Geoapify devolvió una ruta no válida. Vuelve a intentar.');
@@ -151,12 +265,12 @@ export function createGeoapifyClient({apiKey, fetchImpl = globalThis.fetch} = {}
     });
   }
 
-  async function nearbyPlaces(point) {
+  async function nearbyPlaces(point, {language} = {}) {
     requirePoint(point);
     const results = await Promise.allSettled(PLACE_TYPES.map(async ({category, type, icon}) => {
       const body = await request('/v2/places', {
         categories: category, filter: `circle:${point.lon},${point.lat},5000`,
-        bias: `proximity:${point.lon},${point.lat}`, limit: '8', lang: 'es',
+        bias: `proximity:${point.lon},${point.lat}`, limit: '8', lang: normalizedLanguage(language),
       }, 'buscar los lugares cercanos');
       if (!Array.isArray(body?.features)) throw new Error('Geoapify devolvió lugares no válidos. Vuelve a intentar.');
       return body.features.flatMap((feature, index) => {
@@ -182,9 +296,9 @@ export function createGeoapifyClient({apiKey, fetchImpl = globalThis.fetch} = {}
 
   function tileUrl(theme) {
     if (!key) return OSM_TILES;
-    const style = theme === 'dark' ? 'dark-matter' : 'osm-carto';
+    const style = theme === 'dark' ? 'dark-matter-yellow-roads' : 'osm-carto';
     return `https://maps.geoapify.com/v1/tile/${style}/{z}/{x}/{y}.png?apiKey=${encodeURIComponent(key)}`;
   }
 
-  return {hasRouting, geocode, getRoutes, nearbyPlaces, tileUrl};
+  return {hasRouting, geocode, suggestPlaces, getRoutes, nearbyPlaces, tileUrl};
 }

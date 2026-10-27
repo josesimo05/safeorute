@@ -12,6 +12,7 @@ async function ready(page) {
   await page.evaluate(async () => { await navigator.serviceWorker.ready; });
   await page.reload();
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+  await page.getByText('Instalar y actualizar', {exact: true}).click();
   await expect(page.getByText('Interfaz lista para abrir sin conexión.', {exact: false})).toBeVisible();
 }
 
@@ -19,6 +20,7 @@ test('manifest e iconos cumplen los requisitos de instalación de Chromium', asy
   // Chromium intentionally blocks installation in the default incognito contexts.
   const context = await playwright.chromium.launchPersistentContext(testInfo.outputPath('install-profile'), {
     headless: true,
+    locale: 'es-DO',
     baseURL: 'http://127.0.0.1:4173',
     executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
   });
@@ -60,6 +62,7 @@ test('recarga sin conexión, conserva reportes locales y permite filtrar', async
   await expect(page.locator('.toast')).toContainText('Reporte enviado a revisión.');
   await context.setOffline(true);
   await page.reload();
+  await page.getByText('Instalar y actualizar', {exact: true}).click();
   await expect(page.getByText('Sin conexión. Tus reportes locales', {exact: false})).toBeVisible();
   await expect(page.locator('.report').first()).toBeVisible();
   await page.getByPlaceholder('Ej. luminaria, avenida…').fill('no existe este reporte');
@@ -80,6 +83,7 @@ test('recarga sin conexión, conserva reportes locales y permite filtrar', async
 test('ofrece instrucciones de instalación en iPhone y respeta el ancho móvil', async ({browser}) => {
   const context = await browser.newContext({
     viewport: {width: 390, height: 844},
+    locale: 'es-DO',
     isMobile: true,
     hasTouch: true,
     userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
@@ -88,6 +92,7 @@ test('ofrece instrucciones de instalación en iPhone y respeta el ancho móvil',
   await context.addInitScript(() => window.addEventListener('beforeinstallprompt', event => event.stopImmediatePropagation()));
   const page = await context.newPage();
   await page.goto('http://127.0.0.1:4173');
+  await page.getByText('Instalar y actualizar', {exact: true}).click();
   await page.getByRole('button', {name: 'Instalar app', exact: true}).click();
   await expect(page.getByText('En iPhone o iPad, abre esta página en Safari,', {exact: false})).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -99,6 +104,7 @@ test('ofrece instrucciones de instalación en iPhone y respeta el ancho móvil',
 test('controla la instalación aceptada y descarta el evento usado', async ({page}) => {
   await page.goto('/');
   await page.getByRole('heading', {name: 'Tu ciudad, con más contexto.'}).waitFor();
+  await page.getByText('Instalar y actualizar', {exact: true}).click();
   // Simulate the OS dialog only; manifest installability is checked separately above.
   await page.evaluate(() => {
     window.installPrompts = 0;
@@ -127,6 +133,7 @@ test('una nueva versión espera hasta cerrar el formulario y confirmar', async (
     await expect(update).toBeDisabled();
     await expect(page.getByLabel('Detalle opcional')).toHaveValue('Este texto debe permanecer mientras llega una actualización.');
     await page.getByRole('button', {name: 'Elegir en el mapa', exact: true}).click();
+    await expect(page.locator('main')).toHaveClass(/map-focused/);
     await expect(update).toBeDisabled();
     await page.locator('.map').click({position: {x: 170, y: 150}});
     await expect(page.getByLabel('Detalle opcional')).toHaveValue('Este texto debe permanecer mientras llega una actualización.');
