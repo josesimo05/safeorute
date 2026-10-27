@@ -27,10 +27,10 @@ test('una búsqueda anterior no sustituye las sugerencias de lo que se está esc
   await input.fill('Colegio');
   await started;
   await input.fill('Club San');
-  await expect(page.getByRole('option')).toContainText('Club San Gerónimo');
+  await expect(page.locator('.suggestion-list').getByRole('option')).toContainText('Club San Gerónimo');
   releaseOld();
   await finished;
-  await expect(page.getByRole('option')).not.toContainText('Colegio');
+  await expect(page.locator('.suggestion-list').getByRole('option')).not.toContainText('Colegio');
   await input.press('ArrowDown');
   await expect(input).toHaveAttribute('aria-activedescendant', 'origin-options-0');
   await input.press('Enter');
@@ -49,7 +49,7 @@ test('los fallos de búsqueda son visibles y se puede volver a buscar por nombre
   const input = page.getByRole('combobox', {name: 'Origen', exact: true});
   await input.fill('Colegio Jaime');
   await expect(page.locator('#origin-status')).toContainText('Geoapify no autorizó');
-  await expect(page.getByRole('option')).toHaveCount(0);
+  await expect(page.locator('.suggestion-list').getByRole('option')).toHaveCount(0);
   denied = false;
   await input.press('Enter');
   await expect(page.getByRole('option').filter({hasText: 'Colegio Jaime Molina Mota'})).toBeVisible();

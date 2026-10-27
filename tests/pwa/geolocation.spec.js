@@ -36,7 +36,7 @@ test('una ubicación retrasada no reemplaza un lugar elegido ni borra sus rutas'
   await settleLocation(page, 0);
   await expect(origin).toHaveValue('Parque Independencia, Santo Domingo');
   await expect(page.locator('.route-card')).toHaveCount(2);
-  await expect(page.getByRole('link', {name: 'Waze', exact: true})).toHaveAttribute('href', /ll=18\.49%2C-69\.94/);
+  await expect(page.getByRole('button', {name: 'Iniciar navegación', exact: true})).toBeVisible();
 });
 
 test('las solicitudes de ubicación se reemplazan por campo y descartan errores antiguos', async ({page, context}) => {

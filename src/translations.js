@@ -1,4 +1,5 @@
 import errorRows from './translations-errors.js';
+import navigationRows from './translations-navigation.js';
 
 // Source strings are Spanish. Values are explicit UI copy, never user content.
 // Columns: Spanish, English, French, Portuguese, German, Italian, Arabic, Chinese.
@@ -290,7 +291,7 @@ const pwaRows = [
 ];
 
 const codes = ['es', 'en', 'fr', 'pt', 'de', 'it', 'ar', 'zh'];
-export const translationRows = Object.freeze([...rows, ...pwaRows, ...errorRows].map(row => Object.freeze(row)));
+export const translationRows = Object.freeze([...rows, ...pwaRows, ...errorRows, ...navigationRows].map(row => Object.freeze(row)));
 export const sourceStrings = Object.freeze(translationRows.map(row => row[0]));
 export const translations = Object.freeze(Object.fromEntries(codes.map((code, index) =>
   [code, Object.freeze(Object.fromEntries(translationRows.map(row => [row[0], row[index]])))])));

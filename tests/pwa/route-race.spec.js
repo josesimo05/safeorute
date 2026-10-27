@@ -30,6 +30,6 @@ test('cambiar el destino durante el cálculo descarta las rutas de la selección
   await Promise.all((await Promise.all(responses)).map(response=>response.finished()));
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   await expect(page.locator('.route-card')).toHaveCount(0);
-  await expect(page.getByRole('link',{name:'Waze',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Iniciar navegación',exact:true})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Buscar rutas',exact:true})).toBeEnabled();
 });

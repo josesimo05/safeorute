@@ -187,7 +187,7 @@ test('routing requests supported preferences and preserves GeoJSON longitude/lat
   const routes = await client.getRoutes(start, end);
   assert.deepEqual(routes.map(route => [route.id, route.name]), [['balanced', 'Recomendada'], ['short', 'Más corta']]);
   assert.deepEqual(routes[0].points, coordinates.map(([longitude, latitude]) => ({latitude, longitude})));
-  assert.deepEqual(routes[0].instructions, [{text: 'Gira a la derecha.', distance: 100, seconds: 15}]);
+  assert.deepEqual(routes[0].instructions, [{text: 'Gira a la derecha.', distance: 100, seconds: 15, fromIndex: null, toIndex: null}]);
   assert.equal(routes[0].seconds, 720);
   assert.equal(routes[0].distance, 5600);
   assert.deepEqual(requests.map(url => url.searchParams.get('type')), ['balanced', 'short']);
@@ -211,6 +211,58 @@ test('identical preferences display one real route and one failed preference pre
   const routes = await partial.client.getRoutes(start, end);
   assert.equal(routes.length, 1);
   assert.equal(routes[0].id, 'short');
+});
+
+test('maneuver indices are leg-local and map into the route after duplicate coordinates are removed', async () => {
+  const lines = [
+    [[-70, 19], [-70, 19], [-69.9, 19.1]],
+    [[-69.9, 19.1], [-69.85, 19.12], [-69.85, 19.12], [-69.8, 19.2]],
+  ];
+  const step = (text, from_index, to_index) => ({instruction: {text}, from_index, to_index, distance: 10, time: 2});
+  const {client} = mockClient(() => success({features: [feature({type: 'MultiLineString', coordinates: lines}, {
+    legs: [
+      {steps: [step('Start', 0, 2), step('Waypoint', 2, 2)]},
+      {steps: [step('Continue', 0, 2), step('Turn', 2, 3), {...step('Arrive', 3, 3), distance: 0, time: 0}]},
+    ],
+  })]}));
+  const [route] = await client.getRoutes(start, end, {language: 'fr'});
+  assert.equal(route.points.length, 4);
+  assert.deepEqual(route.instructions.map(({text, fromIndex, toIndex}) => [text, fromIndex, toIndex]), [
+    ['Start', 0, 1], ['Waypoint', 1, 1], ['Continue', 1, 2], ['Turn', 2, 3], ['Arrive', 3, 3],
+  ]);
+  assert.deepEqual(route.points[route.instructions[3].fromIndex], {latitude: 19.12, longitude: -69.85});
+  assert.equal(route.instructions.at(-1).distance, 0);
+  assert.equal(route.instructions.at(-1).seconds, 0);
+  assert.equal(route.instructionsLanguage, 'fr');
+});
+
+test('missing or invalid maneuver indices retain overview text without fabricating turn locations', async () => {
+  const ranges = [[undefined, undefined], ['0', 2], [-1, 1], [1, 0], [0.1, 2], [0, 3], [NaN, 2]];
+  const {client} = mockClient(() => success({features: [feature(undefined, {legs: [{steps: [
+    ...ranges.map(([from_index, to_index], index) => ({instruction: {text: `Step ${index}`}, from_index, to_index, distance: -1, time: '5'})),
+    {instruction: {text: '  Start here  '}, from_index: 0, to_index: 0, distance: 0, time: 0},
+    {from_index: 0, to_index: 2},
+  ]}]})]}));
+  const [route] = await client.getRoutes(start, end);
+  assert.equal(route.instructions.length, ranges.length + 1);
+  for (const step of route.instructions.slice(0, -1)) {
+    assert.equal(step.fromIndex, null);
+    assert.equal(step.toIndex, null);
+    assert.equal(step.distance, null);
+    assert.equal(step.seconds, null);
+  }
+  assert.deepEqual(route.instructions.at(-1), {text: 'Start here', distance: 0, seconds: 0, fromIndex: 0, toIndex: 0});
+});
+
+test('an ambiguous geometry-to-leg shape preserves instructions as overview only', async () => {
+  const {client} = mockClient(() => success({features: [feature(undefined, {legs: [
+    {steps: [{instruction: {text: 'First leg'}, from_index: 0, to_index: 1}]},
+    {steps: [{instruction: {text: 'Second leg'}, from_index: 0, to_index: 1}]},
+  ]})]}));
+  const [route] = await client.getRoutes(start, end);
+  assert.deepEqual(route.instructions.map(step => [step.text, step.fromIndex, step.toIndex]), [
+    ['First leg', null, null], ['Second leg', null, null],
+  ]);
 });
 
 test('malformed and disconnected route geometry is never joined into invented paths', async () => {
@@ -278,6 +330,7 @@ test('Arabic and Chinese UI languages use supported routing instructions and ret
         : {ok: false, status: 400}
       : success({features: []}));
     assert.equal((await client.getRoutes(start, end, {language})).length, 1);
+    assert.equal((await client.getRoutes(start, end, {language}))[0].instructionsLanguage, 'en');
     await client.nearbyPlaces(start, {language});
     assert.ok(requests.filter(url => url.pathname === '/v1/routing').every(url => url.searchParams.get('lang') === 'en'));
     assert.ok(requests.filter(url => url.pathname === '/v2/places').every(url => url.searchParams.get('lang') === language));

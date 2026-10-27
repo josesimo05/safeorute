@@ -23,7 +23,7 @@ for (const language of ['ar', 'zh']) {
     await expect(page.locator('.route-card')).toHaveCount(2);
     await expect(page.locator('html')).toHaveAttribute('lang',language);
     expect(requestedLanguages).toEqual(['en','en']);
-    await expect(page.getByRole('link',{name:'Waze',exact:true})).toBeVisible();
+    await expect(page.locator('.start-navigation')).toBeVisible();
   });
 }
 

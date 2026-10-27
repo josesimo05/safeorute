@@ -25,15 +25,10 @@ test('Geoapify busca direcciones, calcula dos rutas y carga lugares cercanos', a
   expect(calls.otherMaps).toEqual([]);
   await page.locator('.route-card').nth(1).click();
   await expect(page.locator('.route-card.selected')).toContainText('Más corta');
-  const waze = page.getByRole('link', {name: 'Waze', exact: true});
-  const wazeURL = new URL(await waze.getAttribute('href'));
-  expect(wazeURL.hostname).toBe('www.waze.com');
-  expect(wazeURL.pathname).toBe('/ul');
-  expect(wazeURL.searchParams.get('ll')).toBe('18.49,-69.94');
-  expect(wazeURL.searchParams.get('navigate')).toBe('yes');
-  expect(await waze.getAttribute('target')).not.toBe('_blank');
+  await expect(page.getByRole('button', {name: 'Iniciar navegación', exact: true})).toBeVisible();
+  await expect(page.locator('a[href*="waze.com"], a[href*="maps.apple.com"], a[href*="google.com/maps"]')).toHaveCount(0);
   await page.getByRole('combobox', {name: 'Destino', exact: true}).fill('Otro lugar');
-  await expect(page.getByRole('link', {name: 'Waze', exact: true})).toHaveCount(0);
+  await expect(page.getByRole('button', {name: 'Iniciar navegación', exact: true})).toHaveCount(0);
 });
 
 test('el mapa usa Geoapify en claro y oscuro con la atribución del proveedor', async ({page, context}) => {

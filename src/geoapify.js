@@ -32,11 +32,12 @@ function samePoint(a, b) {
   return a.latitude === b.latitude && a.longitude === b.longitude;
 }
 
-function routePoints(geometry) {
+function routeGeometry(geometry) {
   const lines = geometry?.type === 'LineString' ? [geometry.coordinates]
     : geometry?.type === 'MultiLineString' ? geometry.coordinates : null;
   if (!Array.isArray(lines) || !lines.length) return null;
   const points = [];
+  const indexMaps = [];
   for (const line of lines) {
     if (!Array.isArray(line) || line.length < 2) return null;
     const segment = line.map(coordinatePoint);
@@ -44,11 +45,14 @@ function routePoints(geometry) {
     if (segment.some(point => !point)) return null;
     const normalized = segment.map(point => ({latitude: point.lat, longitude: point.lon}));
     if (points.length && !samePoint(points.at(-1), normalized[0])) return null;
+    const indexMap = [];
     for (const point of normalized) {
       if (!points.length || !samePoint(points.at(-1), point)) points.push(point);
+      indexMap.push(points.length - 1);
     }
+    indexMaps.push(indexMap);
   }
-  return points.length > 1 ? points : null;
+  return points.length > 1 ? {points, indexMaps} : null;
 }
 
 function addressText(properties) {
@@ -117,15 +121,30 @@ function cancelledSearch() {
   return new DOMException('La búsqueda fue cancelada.', 'AbortError');
 }
 
-function normalizeRoute(feature, preference, index) {
-  const points = routePoints(feature?.geometry);
+function normalizeRoute(feature, preference, index, instructionsLanguage) {
+  const geometry = routeGeometry(feature?.geometry);
   const properties = feature?.properties;
-  if (!points || !properties || !Number.isFinite(properties.time) || properties.time < 0
+  if (!geometry || !properties || !Number.isFinite(properties.time) || properties.time < 0
     || !Number.isFinite(properties.distance) || properties.distance < 0) return null;
-  const instructions = (Array.isArray(properties.legs) ? properties.legs : []).flatMap(leg =>
+  const {points, indexMaps} = geometry;
+  const legs = Array.isArray(properties.legs) ? properties.legs : [];
+  const instructions = legs.flatMap((leg, legIndex) =>
     (Array.isArray(leg?.steps) ? leg.steps : []).flatMap(step => {
       const text = step?.instruction?.text;
-      return typeof text === 'string' && text.trim() ? [{text, distance: step.distance, seconds: step.time}] : [];
+      if (typeof text !== 'string' || !text.trim()) return [];
+      // Geoapify's from_index/to_index refer to that leg's geometry line. Map
+      // through duplicate removal instead of assuming indices are route-global.
+      // A shape/leg mismatch has no reliable mapping; keep its overview text only.
+      const indexMap = indexMaps.length === legs.length ? indexMaps[legIndex] : null;
+      const validIndices = indexMap && Number.isInteger(step.from_index) && Number.isInteger(step.to_index)
+        && step.from_index >= 0 && step.to_index >= step.from_index && step.to_index < indexMap.length;
+      return [{
+        text: text.trim(),
+        distance: Number.isFinite(step.distance) && step.distance >= 0 ? step.distance : null,
+        seconds: Number.isFinite(step.time) && step.time >= 0 ? step.time : null,
+        fromIndex: validIndices ? indexMap[step.from_index] : null,
+        toIndex: validIndices ? indexMap[step.to_index] : null,
+      }];
     }));
   return {
     id: index ? `${preference}-${index}` : preference,
@@ -134,6 +153,7 @@ function normalizeRoute(feature, preference, index) {
     seconds: properties.time,
     distance: properties.distance,
     instructions,
+    instructionsLanguage,
   };
 }
 
@@ -253,15 +273,16 @@ export function createGeoapifyClient({apiKey, fetchImpl = globalThis.fetch} = {}
     requirePoint(from);
     requirePoint(to);
     const preferences = ['balanced', 'short'];
+    const instructionsLanguage = routingLanguage(language);
     // Geoapify offers routing preferences, without an alternatives/departure API.
     const results = await Promise.allSettled(preferences.map(async preference => {
       const body = await request('/v1/routing', {
         waypoints: `${from.lat},${from.lon}|${to.lat},${to.lon}`,
-        mode: 'drive', type: preference, units: 'metric', lang: routingLanguage(language),
+        mode: 'drive', type: preference, units: 'metric', lang: instructionsLanguage,
         format: 'geojson', traffic: 'free_flow', details: 'instruction_details',
       }, 'calcular la ruta');
       if (!Array.isArray(body?.features)) throw new Error('Geoapify devolvió una ruta no válida. Vuelve a intentar.');
-      return body.features.map((feature, index) => normalizeRoute(feature, preference, index)).filter(Boolean);
+      return body.features.map((feature, index) => normalizeRoute(feature, preference, index, instructionsLanguage)).filter(Boolean);
     }));
     if (results.every(result => result.status === 'rejected')) throw results[0].reason;
     const seen = new Set();

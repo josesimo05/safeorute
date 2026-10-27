@@ -107,6 +107,7 @@ export default function PlaceSearch({id, label, value, selected, onChange, onSel
         onChange={event => {setManual(null); onChange(event.target.value);}}/>
       {value && <button type="button" aria-label={t('Borrar {field}', {field: displayLabel})} onClick={() => {setManual(null); onChange(''); input.current?.focus();}}>×</button>}
       <button type="button" title={t('Usar mi ubicación')} aria-label={t('Usar mi ubicación como {field}', {field: displayLabel})} onClick={onUseLocation}>◎</button>
+      <button type="button" className="choose-on-map" aria-label={t('Elegir {field} en mapa', {field: displayLabel})} onClick={onPickOnMap}>⌖ <span>{t('Mapa')}</span></button>
     </div>
     <div id={`${id}-status`} className="search-status" role="status">
       {open && status === 'loading' && t('Buscando lugares…')}
@@ -123,9 +124,6 @@ export default function PlaceSearch({id, label, value, selected, onChange, onSel
         {(result.name || result.poi?.name) && <span dir="auto">{result.address?.freeformAddress}</span>}
       </button>)}
     </div>}
-    <details className="search-other-options"><summary aria-label={t('Más opciones para {field}', {field: displayLabel})}>{t('Otras formas de elegir')}</summary><div className="field-actions">
-      <button type="button" onClick={() => {setFocused(true); input.current?.focus(); if(query.length >= 3) setManual({query});}} aria-label={t('Buscar {field}', {field: displayLabel})}>{t('Buscar por nombre')}</button>
-      <button type="button" onClick={onPickOnMap}>{t('Elegir en mapa')}</button>
-    </div></details>
+
   </div>;
 }

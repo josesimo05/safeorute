@@ -35,10 +35,11 @@ for (const width of [320, 390, 768]) {
     await expect(page.getByRole('combobox', {name: 'Destino', exact: true})).toHaveValue('Ágora Mall, Santo Domingo');
     await page.getByRole('button', {name: 'Buscar rutas', exact: true}).click();
     await expect(page.locator('.route-card')).toHaveCount(2);
-    await page.getByRole('link', {name: 'Waze', exact: true}).scrollIntoViewIfNeeded();
-    const link = await page.getByRole('link', {name: 'Waze', exact: true}).boundingBox();
-    expect(link.height).toBeGreaterThanOrEqual(44);
-    expect(link.y + link.height).toBeLessThan(844 - 55);
+    const start = page.getByRole('button', {name: 'Iniciar navegación', exact: true});
+    await start.scrollIntoViewIfNeeded();
+    const control = await start.boundingBox();
+    expect(control.height).toBeGreaterThanOrEqual(44);
+    expect(control.y + control.height).toBeLessThan(844 - 55);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }

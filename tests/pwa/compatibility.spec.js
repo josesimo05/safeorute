@@ -1,7 +1,7 @@
 import {test, expect} from '@playwright/test';
 import {mockGeoapify} from './fixtures';
 
-test('busca por nombre, cambia el tema y prepara el enlace de Waze', async ({page, context}) => {
+test('busca por nombre, cambia el tema y prepara la navegación dentro de SafeRoute', async ({page, context}) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const calls = await mockGeoapify(context);
@@ -23,14 +23,8 @@ test('busca por nombre, cambia el tema y prepara el enlace de Waze', async ({pag
   await page.getByRole('option').filter({hasText: 'Ágora Mall'}).click();
   await page.getByRole('button', {name: 'Buscar rutas', exact: true}).click();
   await expect(page.locator('.route-card')).toHaveCount(2);
-  const waze = page.getByRole('link', {name: 'Waze', exact: true});
-  const href = new URL(await waze.getAttribute('href'));
-  expect(href.protocol).toBe('https:');
-  expect(href.hostname).toBe('www.waze.com');
-  expect(href.pathname).toBe('/ul');
-  expect(href.searchParams.get('ll')).toBe('18.49,-69.94');
-  expect(href.searchParams.get('navigate')).toBe('yes');
-  expect(await waze.getAttribute('target')).not.toBe('_blank');
+  await expect(page.getByRole('button', {name: 'Iniciar navegación', exact: true})).toBeVisible();
+  await expect(page.locator('a[href*="waze.com"], a[href*="maps.apple.com"], a[href*="google.com/maps"]')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

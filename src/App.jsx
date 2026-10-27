@@ -2,16 +2,15 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import PwaControls from './PwaControls';
 import PlaceSearch from './PlaceSearch';
-import { navigationUrl } from './external-navigation';
+import NavigationSession from './NavigationSession';
 import { useI18n } from './LocaleContext';
 import { languages } from './i18n';
-import { countryOptions, normalizeCountry } from './regions';
+import { countryOptions, normalizeCountry, countryMapView } from './regions';
 import { firebaseErrorMessage } from './firebase-errors';
 import { categories, colors, classify, duplicate, validate, period, routeReportCount, reportLevel } from './logic';
 import { cloud, watch, watchUser, submit, moderate, reset, analyze, register, login, logout } from './store';
 import { hasRouting, getRoutes, nearbyPlaces, similarRoutes, tileUrl, mapProvider, mapAttribution } from './navigation';
-const center = [18.476, -69.943],
-  poiFilters = ['Gasolineras', 'Farmacias', 'Supermercados', 'Hospitales'];
+const poiFilters = ['Gasolineras', 'Farmacias', 'Supermercados', 'Hospitales'];
 function localDay(value) {
   const d = new Date(value);
   return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -85,6 +84,13 @@ export default function App() {
     [routeBusy, setRouteBusy] = useState(false);
   const [panelExpanded, setPanelExpanded] = useState(true),
     [searchActive, setSearchActive] = useState(null);
+  const [pickerPoint, setPickerPoint] = useState(null);
+  const [guiding, setGuiding] = useState(false);
+  const [followPosition, setFollowPosition] = useState(true);
+  const [navigationPosition, setNavigationPosition] = useState(null);
+  const [mapCenter, setMapCenter] = useState(() => countryMapView(country).center);
+  const guidanceRef = useRef(false);
+  guidanceRef.current = guiding;
   const mapNode = useRef(),
     map = useRef(),
     markers = useRef(),
@@ -92,6 +98,7 @@ export default function App() {
     endpointLayer = useRef(),
     poiLayer = useRef(),
     pointLayer = useRef(),
+    userLayer = useRef(),
     tiles = useRef(),
     clickMode = useRef('report'),
     pickMode = useRef(null);
@@ -131,7 +138,7 @@ export default function App() {
     };
     const m = L.map(mapNode.current, {
       zoomControl: false
-    }).setView(center, 14);
+    }).setView(countryMapView(country).center, countryMapView(country).zoom);
     map.current = m;
     L.control.zoom({
       position: 'bottomright'
@@ -146,25 +153,23 @@ export default function App() {
     endpointLayer.current = L.layerGroup().addTo(m);
     poiLayer.current = L.layerGroup().addTo(m);
     pointLayer.current = L.layerGroup().addTo(m);
+    userLayer.current = L.layerGroup().addTo(m);
+    m.on('moveend', () => {
+      const c = m.getCenter().wrap();
+      setMapCenter([c.lat, c.lng]);
+      if (pickMode.current) setPickerPoint({lat:c.lat,lon:c.lng});
+    });
+    m.on('dragstart', () => {
+      if (guidanceRef.current) setFollowPosition(false);
+    });
     m.on('click', e => {
       const p = {
-        lat: Number(e.latlng.lat.toFixed(6)),
-        lon: Number(e.latlng.lng.toFixed(6))
+        lat: Number(e.latlng.wrap().lat.toFixed(6)),
+        lon: Number(e.latlng.wrap().lng.toFixed(6))
       };
       if (pickMode.current) {
-        routeRequest.current++;
-        setRouteBusy(false);
-        setSearchActive(null);
-        const field = pickMode.current;
-        locationRequests.current[field]++;
-        field === 'origin' ? setOrigin({...p,source:'map'}) : setDestination({...p,source:'map'});
-        field === 'origin' ? setOriginText('Punto seleccionado en el mapa') : setDestText('Punto seleccionado en el mapa');
-        pickMode.current = null;
-        setPicking(false);
-        setPanelExpanded(true);
-        setRoutes([]);
-        setPlaces([]);
-        setMessage(field === 'origin' ? 'Origen seleccionado.' : 'Destino seleccionado.');
+        m.panTo([p.lat,p.lon], {animate:false});
+        setPickerPoint(p);
         return;
       }
       if (clickMode.current === 'report') {
@@ -177,7 +182,7 @@ export default function App() {
       }
     });
     const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => m.invalidateSize({
-      pan: false
+      pan: true, animate: false
     })) : null;
     resize?.observe(mapNode.current);
     return () => {
@@ -185,6 +190,22 @@ export default function App() {
       m.remove();
     };
   }, []);
+  useEffect(() => {
+    const view = countryMapView(country);
+    map.current?.setView(view.center, view.zoom, {animate:false});
+    setMapCenter(view.center);
+  }, [country]);
+  useEffect(() => {
+    if (!userLayer.current) return;
+    userLayer.current.clearLayers();
+    if (!guiding || !navigationPosition) return;
+    const p = navigationPosition;
+    if (Number.isFinite(p.accuracy) && p.accuracy > 0) L.circle([p.lat,p.lon], {
+      radius:p.accuracy, color:'#1678c8', weight:1, fillColor:'#359cef', fillOpacity:.12, interactive:false
+    }).addTo(userLayer.current);
+    L.circleMarker([p.lat,p.lon], {radius:9,color:'#fff',weight:3,fillColor:'#1678c8',fillOpacity:1,interactive:false}).addTo(userLayer.current);
+    if (followPosition) map.current?.setView([p.lat,p.lon], Math.max(map.current.getZoom(), 17), {animate:false});
+  }, [guiding, navigationPosition, followPosition]);
   useEffect(() => {
     if (!form && !account && !preferencesOpen) return;
     const old = document.activeElement,
@@ -222,6 +243,13 @@ export default function App() {
   const activeRoute = routes.find(r => r.id === selectedRoute) || routes[0];
   const comparable = useMemo(() => similarRoutes(routes), [routes]);
   const comparableIds = new Set(comparable.map(r => r.id));
+  const routePicking = picking && Boolean(pickMode.current);
+  useEffect(() => {
+    document.body.classList.toggle('immersive-map', guiding || routePicking);
+    const key = event => {if (event.key === 'Escape' && routePicking) cancelMapPick();};
+    document.addEventListener('keydown', key);
+    return () => {document.body.classList.remove('immersive-map');document.removeEventListener('keydown',key);};
+  }, [guiding, routePicking]);
   useEffect(() => {
     if (!markers.current) return;
     markers.current.clearLayers();
@@ -250,15 +278,15 @@ export default function App() {
     clickMode.current = tab === 'Explorar' ? 'report' : 'ignore';
     const frame = requestAnimationFrame(() => {
       map.current?.invalidateSize({
-        pan: false
+        pan: true, animate: false
       });
-      if (activeRoute?.points.length) map.current?.fitBounds(activeRoute.points.map(p => [p.latitude, p.longitude]), {
+      if (!picking && !guiding && activeRoute?.points.length) map.current?.fitBounds(activeRoute.points.map(p => [p.latitude, p.longitude]), {
         padding: [40, 40],
         maxZoom: 15
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [tab, panelExpanded, picking, searchActive]);
+  }, [tab, panelExpanded, picking, searchActive, guiding]);
   useEffect(() => {
     if (!pointLayer.current) return;
     pointLayer.current.clearLayers();
@@ -283,9 +311,7 @@ export default function App() {
         }).addTo(routeLayer.current);
       }
     });
-    if (activeRoute?.points.length) {
-      const first = activeRoute.points[0],
-        last = activeRoute.points.at(-1);
+    if (!guiding && activeRoute?.points.length) {
       const bounds = L.latLngBounds(activeRoute.points.map(p => [p.latitude, p.longitude]));
       map.current?.fitBounds(bounds, {
         padding: [55, 55],
@@ -329,7 +355,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeRoute?.id, language]);
+  }, [activeRoute, language]);
   useEffect(() => {
     if (!poiLayer.current) return;
     poiLayer.current.clearLayers();
@@ -392,12 +418,40 @@ export default function App() {
   }
   function pickOnMap(field) {
     locationRequests.current[field]++;
+    routeRequest.current++;
+    setRouteBusy(false);
     setSearchActive(null);
     pickMode.current = field;
+    const existing = field === 'origin' ? origin : destination;
+    if (existing) map.current?.setView([existing.lat,existing.lon],Math.max(map.current.getZoom(),15),{animate:false});
+    const c = map.current?.getCenter().wrap();
+    setPickerPoint(c ? {lat:c.lat,lon:c.lng} : null);
     setPicking(true);
     setPanelExpanded(false);
-    setMessage(field === 'origin' ? 'Toca el mapa para elegir el origen.' : 'Toca el mapa para elegir el destino.');
+    setMessage('');
     map.current?.invalidateSize();
+  }
+  function cancelMapPick() {
+    pickMode.current = null;
+    setPickerPoint(null);
+    setPicking(false);
+    setPanelExpanded(true);
+  }
+  function confirmMapPick() {
+    const field = pickMode.current;
+    const c = map.current?.getCenter().wrap();
+    if (!field || !c) return;
+    const p = {lat:Number(c.lat.toFixed(6)),lon:Number(c.lng.toFixed(6)),source:'map'};
+    locationRequests.current[field]++;
+    routeRequest.current++;
+    setRouteBusy(false);
+    if (field === 'origin') {setOrigin(p);setOriginText('Punto seleccionado en el mapa');}
+    else {setDestination(p);setDestText('Punto seleccionado en el mapa');}
+    setRoutes([]);
+    setPlaces([]);
+    setSelectedRoute('');
+    cancelMapPick();
+    setMessage(field === 'origin' ? 'Origen seleccionado.' : 'Destino seleccionado.');
   }
   function chooseAddress(field, result) {
     locationRequests.current[field]++;
@@ -584,6 +638,46 @@ export default function App() {
       setDestination(null);
     }
   }
+  function startNavigation() {
+    if (!activeRoute || routeBusy) return;
+    locationRequests.current.origin++;
+    locationRequests.current.destination++;
+    setMessage('');
+    setNavigationPosition(null);
+    setFollowPosition(true);
+    setSearchActive(null);
+    setPanelExpanded(false);
+    setGuiding(true);
+  }
+  function stopNavigation() {
+    routeRequest.current++;
+    setRouteBusy(false);
+    setGuiding(false);
+    setNavigationPosition(null);
+    setPanelExpanded(true);
+  }
+  async function recalculateNavigation(position) {
+    if (!position || !destination || routeBusy) return;
+    const requestId = ++routeRequest.current;
+    const preference = activeRoute?.id;
+    setRouteBusy(true);
+    try {
+      const found = await getRoutes(position, destination, {language});
+      if (requestId !== routeRequest.current) return;
+      if (!found.length) throw new Error('El servicio no encontró una ruta para esos puntos.');
+      const selected = found.find(route => route.id === preference) || found[0];
+      setOrigin({...position,source:'location'});
+      setOriginText('Mi ubicación');
+      setRoutes(found);
+      setSelectedRoute(selected.id);
+      setPlaces([]);
+      setMessage('Ruta actualizada desde tu ubicación.');
+    } catch (error) {
+      if (requestId === routeRequest.current) setMessage(error.message);
+    } finally {
+      if (requestId === routeRequest.current) setRouteBusy(false);
+    }
+  }
   function changeCountry(value) {
     const next = normalizeCountry(value);
     if (next === country) return;
@@ -599,15 +693,20 @@ export default function App() {
     setRoutes([]);
     setPlaces([]);
     setSelectedRoute('');
+    setGuiding(false);
+    setNavigationPosition(null);
+    setSearchActive(null);
+    setPicking(false);
+    pickMode.current = null;
   }
   const searchBias = origin || {
-    lat: center[0],
-    lon: center[1]
+    lat: mapCenter[0],
+    lon: mapCenter[1]
   };
   const mapLegend = <div className="legend">{categories.map((c, i) => <span key={c}><i className="legend-dot" style={{
         background: colors[i]
       }} />{tr(c)}</span>)}<span><i>⛽</i>{tr("Gasolinera")}</span><span><i>✚</i>{tr("Farmacia")}</span><span><i>🛒</i>{tr("Supermercado")}</span><span><i>🏥</i>{tr("Hospital")}</span><span><i className="legend-route" />{tr("Ruta elegida")}</span><span><i className="legend-start">{tr("A")}</i>{tr("Origen")}</span><span><i className="legend-end">{tr("B")}</i>{tr("Destino")}</span></div>;
-  return <><header><a className="brand" href="/" aria-label={tr("SafeRoute inicio")}><span className="brandicon">↗</span>SafeRoute<span className="branddot">.</span></a><nav aria-label={tr("Secciones")}>{['Explorar', 'Patrones', 'Navegar', ...(!cloud ? ['Moderación'] : [])].map(t => <button className={tab === t ? 'active' : ''} key={t} onClick={() => {
+  return <div className={`app-shell ${routePicking ? `route-picking route-picking-${pickMode.current}` : ''} ${guiding ? 'guidance-mode' : ''}`}><header><a className="brand" href="/" aria-label={tr("SafeRoute inicio")}><span className="brandicon">↗</span>SafeRoute<span className="branddot">.</span></a><nav aria-label={tr("Secciones")}>{['Explorar', 'Patrones', 'Navegar', ...(!cloud ? ['Moderación'] : [])].map(t => <button className={tab === t ? 'active' : ''} key={t} onClick={() => {
           setTab(t);
           setSearchActive(null);
           setPanelExpanded(true);
@@ -622,14 +721,14 @@ export default function App() {
           setPoint(null);
         }}>{tr("＋ Reportar")}</button></div></header>
  <main className={`${tab === 'Navegar' ? 'is-planning' : ''} ${!panelExpanded || picking ? 'map-focused' : ''}`}><div className="intro"><div><span className="eyebrow">{tr("INFORMACIÓN QUE NOS CONECTA")}</span><h1>{tr("Tu ciudad, con más contexto.")}</h1><p>{tr("Explora lo que comparte la comunidad. Decide cómo moverte.")}</p><div className="hero-tags"><span>{tr("⌖ Reportes comunitarios")}</span><span>{tr("✦ Rutas con contexto")}</span><span>{tr("◉ Diseñado para móvil")}</span></div></div><div className="mode"><i className={online ? 'dot' : 'dot off'} />{cloud ? tr('Comunidad · Firebase') : tr('Demostración · Datos simulados')}<small>{online ? tr('Con conexión') : tr('Sin conexión')}</small></div></div>
- <PwaControls online={online} editing={form || account || busy || picking || routeBusy} demo={!cloud} />
+ <PwaControls online={online} editing={form || account || busy || picking || routeBusy || guiding} demo={!cloud} />
  <section className={`workspace ${tab === 'Navegar' ? 'navigation-workspace' : ''} ${panelExpanded ? 'panel-expanded' : 'panel-collapsed'} ${picking ? 'is-picking' : ''} ${searchActive ? 'is-searching' : ''}`}><aside><button type="button" className="panel-toggle" aria-label={panelExpanded && !picking ? tr('Ver mapa completo') : tab === 'Navegar' ? tr('Mostrar planificador') : tr('Mostrar reportes')} aria-controls="workspace-panel" aria-expanded={panelExpanded && !picking} onClick={() => {
             setSearchActive(null);
             setPanelExpanded(v => picking ? true : !v);
             setPicking(false);
             pickMode.current = null;
           }}><span>{panelExpanded && !picking ? tr('Ver mapa completo') : tab === 'Navegar' ? tr('Mostrar planificador') : tr('Mostrar reportes')}</span></button><div className="panel-content" id="workspace-panel"><div className="aside-title"><span>{tab === 'Explorar' ? tr('Explora los reportes') : tab === 'Patrones' ? tr('Observa los patrones') : tab === 'Navegar' ? tr('Navega con contexto') : tr('Revisión de prueba')}</span><small>{country === "all" ? tr("Todos los países") : countries.find(item=>item.code===country)?.name}</small></div>
- {tab === 'Navegar' && <div className="navigator"><div className="nav-note">{tr("Rutas estimadas con Geoapify y reportes comunitarios aprobados. Sin tráfico en tiempo real.")}</div>{!hasRouting && <div className="setup-note">{tr("Configura Geoapify para buscar direcciones, calcular rutas y encontrar servicios cercanos. La guía del proyecto explica cómo conectar tu clave.")}</div>}<form onSubmit={calculateRoutes}>
+ {tab === 'Navegar' && <div className="navigator"><div className="nav-note">{tr("Rutas estimadas con Geoapify y reportes comunitarios aprobados. Sin tráfico en tiempo real.")}</div><label className="planner-country" htmlFor="planner-country">{tr('País de búsqueda')}<select id="planner-country" value={country} onChange={e=>changeCountry(e.target.value)}><option value="all">{tr('Todos los países')}</option>{countries.map(item=><option key={item.code} value={item.code}>{item.name}</option>)}</select></label>{!hasRouting && <div className="setup-note">{tr("Configura Geoapify para buscar direcciones, calcular rutas y encontrar servicios cercanos. La guía del proyecto explica cómo conectar tu clave.")}</div>}<form onSubmit={calculateRoutes}>
  <PlaceSearch id="origin" label="Origen" value={origin?.source === "map" ? tr("Punto seleccionado en el mapa") : origin?.source === "location" ? tr("Mi ubicación") : originText} selected={Boolean(origin)} country={country} bias={searchBias} onChange={text => editPlace('origin', text)} onSelect={result => chooseAddress('origin', result)} onUseLocation={() => useMyPosition('origin')} onFocusChange={active => setSearchActive(active ? 'origin' : null)} onPickOnMap={() => pickOnMap('origin')} />
  <PlaceSearch id="destination" label="Destino" value={destination?.source === "map" ? tr("Punto seleccionado en el mapa") : destination?.source === "location" ? tr("Mi ubicación") : destText} selected={Boolean(destination)} country={country} bias={searchBias} onChange={text => editPlace('destination', text)} onSelect={result => chooseAddress('destination', result)} onUseLocation={() => useMyPosition('destination')} onFocusChange={active => setSearchActive(active ? 'destination' : null)} onPickOnMap={() => pickOnMap('destination')} />
  <button className="primary wide" disabled={routeBusy || !hasRouting}>{routeBusy ? tr('Calculando…') : tr('Buscar rutas')}</button>
@@ -651,10 +750,7 @@ export default function App() {
                         })}</small><span className="route-risk">{n === 0 ? '✓' : n <= 2 ? '!' : '‼'} {tr(reportLevel(n))} · {tr("{count} reportes a 150 m", {count:n})}{similar ? tr('· tiempo similar') : ''}</span><span className="tiny">{tr("Indicador comunitario; no predice el peligro ni verifica los hechos.")}{' '}{r.seconds <= fast * 1.3 ? '' : tr('{minutes} min sobre la ruta más rápida.', {
                           minutes: Math.ceil((r.seconds - fast) / 60)
                         })}</span></button>;
-                  })}</div><div className="assist nav-links"><button onClick={speakRoute}>{tr("🔊 Escuchar resumen")}</button></div><div className="assist nav-links">{['Google Maps', 'Apple Maps', 'Waze'].map(app => <a key={app} className="navigation-link" href={navigationUrl(app, {
-                    origin,
-                    destination
-                  }) || undefined} target={app === 'Waze' ? undefined : '_blank'} rel="noopener external">{app}</a>)}</div><small className="tiny">{tr("La otra app recalculará el trayecto. La ruta seleccionada y sus reportes no se transfieren como navegación activa.")}</small></>}
+                  })}</div><button className="primary wide start-navigation" disabled={routeBusy} onClick={startNavigation}>{tr('Iniciar navegación')}</button><p className="tiny">{tr('La ruta seleccionada se mantiene dentro de SafeRoute.')}</p><details className="route-directions"><summary>{tr('Indicaciones de la ruta')}</summary><button onClick={speakRoute}>{tr('🔊 Escuchar resumen')}</button><ol>{activeRoute?.instructions.map((step,index)=><li key={index} dir="auto">{step.text}</li>)}</ol></details></>}
  </div>}
  {tab !== 'Navegar' && <><label>{tr("Buscar en los reportes")}<input placeholder={tr("Ej. luminaria, avenida…")} value={search} onChange={e => setSearch(e.target.value)} /></label><div className="filters"><label>{tr("Categoría")}<select value={cat} onChange={e => setCat(e.target.value)}><option value="Todas">{tr("Todas")}</option>{categories.map(c => <option key={c} value={c}>{tr(c)}</option>)}</select></label><label>{tr("Horario")}<select value={time} onChange={e => setTime(e.target.value)}>{['Todas', 'Madrugada', 'Mañana', 'Tarde', 'Noche'].map(t => <option key={t} value={t}>{tr(t)}</option>)}</select></label></div><label>{tr("Desde la fecha")}<input type="date" value={since} onChange={e => setSince(e.target.value)} /></label><button className="text" onClick={() => {
                 setSearch('');
@@ -682,7 +778,11 @@ export default function App() {
                 }}>{tr("Restaurar demostración")}</button></div>}</>}
  </div></aside><div className="map-wrap"><div ref={mapNode} className="map" aria-label={tr("Mapa de reportes comunitarios y rutas")} /><div className="map-label">{picking ? tr('Toca el mapa para elegir {place}', {
               place: tr(pickMode.current === 'origin' ? 'el origen' : 'el destino')
-            }) : tab === 'Navegar' ? tr('Origen A · Destino B') : tr('Toca para reportar')}</div>{(!online || offlineMap) && <div className="map-offline" role="status"><span>{online ? tr('No se pudo cargar parte del mapa. Puedes reintentarlo.') : tr('El mapa necesita conexión a internet.')}{!cloud && tr(' Tus reportes locales siguen disponibles.')}</span><button type="button" disabled={!online} onClick={() => tiles.current?.redraw()}>{tr("Reintentar mapa")}</button></div>}{tab !== 'Navegar' && <button className="locate" onClick={locateReport}>{tr("◎ Mi ubicación")}</button>}<details className="map-legend-control"><summary>{tr("Leyenda")}</summary>{mapLegend}</details></div></section>
+            }) : tab === 'Navegar' ? tr('Origen A · Destino B') : tr('Toca para reportar')}</div>{(!online || offlineMap) && <div className="map-offline" role="status"><span>{online ? tr('No se pudo cargar parte del mapa. Puedes reintentarlo.') : tr('El mapa necesita conexión a internet.')}{!cloud && tr(' Tus reportes locales siguen disponibles.')}</span><button type="button" disabled={!online} onClick={() => tiles.current?.redraw()}>{tr("Reintentar mapa")}</button></div>}{tab !== 'Navegar' && <button className="locate" onClick={locateReport}>{tr("◎ Mi ubicación")}</button>}<details className="map-legend-control"><summary>{tr("Leyenda")}</summary>{mapLegend}</details>{routePicking && <><div className="picker-crosshair" aria-hidden="true"><span>{pickMode.current === 'origin' ? 'A' : 'B'}</span></div><section className="map-picker" aria-label={tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}><div className="picker-heading"><strong>{tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}</strong><button type="button" onClick={cancelMapPick}>{tr('Cancelar selección')}</button></div><div className="picker-confirm"><p>{tr('Arrastra el mapa y coloca el punto bajo la mira.')}{pickerPoint && <small dir="ltr">{pickerPoint.lat.toFixed(5)}, {pickerPoint.lon.toFixed(5)}</small>}</p><button type="button" className="primary" onClick={confirmMapPick}>{tr(pickMode.current === 'origin' ? 'Confirmar origen' : 'Confirmar destino')}</button></div></section></>}{guiding && activeRoute && <NavigationSession route={activeRoute} onPosition={setNavigationPosition} onStop={stopNavigation} onRecalculate={recalculateNavigation} follow={followPosition} onFollowChange={setFollowPosition} onOverview={() => {
+  setFollowPosition(false);
+  const height=map.current?.getSize().y || 800;
+  map.current?.fitBounds(activeRoute.points.map(p=>[p.latitude,p.longitude]), {paddingTopLeft:[30,Math.min(200,height*.27)],paddingBottomRight:[30,Math.min(250,height*.34)],maxZoom:16});
+}} recalculating={routeBusy} />}</div></section>
  <footer><p>{tr("Los reportes comunitarios no están verificados. SafeRoute no determina si una zona es segura. Conduce y reporta sólo cuando el vehículo esté detenido.")}</p><span>JMMM × Actuana Academy · INTEC STEM</span></footer></main>
  {message && <div className="toast" role="status">{tr(message)}<button aria-label={tr("Cerrar aviso")} onClick={() => setMessage('')}>×</button></div>}
  {form && <div className="overlay"><section role="dialog" aria-modal="true" aria-labelledby="report-title" className="dialog"><button className="close" aria-label={tr("Cerrar formulario")} onClick={() => setForm(false)}>×</button><span className="eyebrow">{tr("TU APORTE CUENTA")}</span><h2 id="report-title">{tr("Registra un incidente")}</h2><p>{tr("No incluyas nombres, rostros, teléfonos ni otros datos personales.")}</p><form onSubmit={send}><div className="quick-label">{tr("Reporte rápido")}<small>{tr("elige el tipo y marca el lugar")}</small></div><div className="quick-choices">{categories.map((c, i) => <button type="button" key={c} className={category === c ? 'quick-selected' : ''} onClick={() => quickReport(c)}><i style={{
@@ -705,5 +805,5 @@ export default function App() {
           setAccountMode(accountMode === 'login' ? 'register' : 'login');
           setAccountError('');
         }}>{accountMode === 'login' ? tr('¿No tienes cuenta? Regístrate') : tr('¿Ya tienes cuenta? Inicia sesión')}</button></section></div>}
- </>;
+ </div>;
 }
