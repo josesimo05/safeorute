@@ -739,7 +739,7 @@ export default function App() {
                     const n = routeReportCount(r, visible),
                       fast = Math.min(...routes.map(q => q.seconds)),
                       similar = comparableIds.has(r.id);
-                    return <button className={'route-card ' + (selectedRoute === r.id ? 'selected' : '')} key={r.id} onClick={() => setSelectedRoute(r.id)}><span className="route-card-top"><b>{tr(r.name) || tr('Ruta {number}', {
+                    return <button className={'route-card ' + (selectedRoute === r.id ? 'selected' : '')} key={r.id} aria-pressed={selectedRoute === r.id} onClick={() => setSelectedRoute(r.id)}><span className="route-card-top"><b>{tr(r.name) || tr('Ruta {number}', {
                             number: i + 1
                           })}</b><b>{tr('{minutes} min', {
                             minutes: new Intl.NumberFormat(language).format(Math.ceil(r.seconds / 60))
@@ -752,6 +752,13 @@ export default function App() {
                         })}</span></button>;
                   })}</div><button className="primary wide start-navigation" disabled={routeBusy} onClick={startNavigation}>{tr('Iniciar navegación')}</button><p className="tiny">{tr('La ruta seleccionada se mantiene dentro de SafeRoute.')}</p><details className="route-directions"><summary>{tr('Indicaciones de la ruta')}</summary><button onClick={speakRoute}>{tr('🔊 Escuchar resumen')}</button><ol>{activeRoute?.instructions.map((step,index)=><li key={index} dir="auto">{step.text}</li>)}</ol></details></>}
  </div>}
+ {tab === 'Explorar' && <button type="button" className="destination-shortcut" onClick={() => {
+   setTab('Navegar');
+   setSearchActive(null);
+   setPanelExpanded(true);
+   setPicking(false);
+   pickMode.current = null;
+ }}><span><strong>{tr('Buscar destino')}</strong><small>{tr('Navega con contexto')}</small></span><span aria-hidden="true">↗</span></button>}
  {tab !== 'Navegar' && <><label>{tr("Buscar en los reportes")}<input placeholder={tr("Ej. luminaria, avenida…")} value={search} onChange={e => setSearch(e.target.value)} /></label><div className="filters"><label>{tr("Categoría")}<select value={cat} onChange={e => setCat(e.target.value)}><option value="Todas">{tr("Todas")}</option>{categories.map(c => <option key={c} value={c}>{tr(c)}</option>)}</select></label><label>{tr("Horario")}<select value={time} onChange={e => setTime(e.target.value)}>{['Todas', 'Madrugada', 'Mañana', 'Tarde', 'Noche'].map(t => <option key={t} value={t}>{tr(t)}</option>)}</select></label></div><label>{tr("Desde la fecha")}<input type="date" value={since} onChange={e => setSince(e.target.value)} /></label><button className="text" onClick={() => {
                 setSearch('');
                 setCat('Todas');
@@ -785,7 +792,7 @@ export default function App() {
 }} recalculating={routeBusy} />}</div></section>
  <footer><p>{tr("Los reportes comunitarios no están verificados. SafeRoute no determina si una zona es segura. Conduce y reporta sólo cuando el vehículo esté detenido.")}</p><span>JMMM × Actuana Academy · INTEC STEM</span></footer></main>
  {message && <div className="toast" role="status">{tr(message)}<button aria-label={tr("Cerrar aviso")} onClick={() => setMessage('')}>×</button></div>}
- {form && <div className="overlay"><section role="dialog" aria-modal="true" aria-labelledby="report-title" className="dialog"><button className="close" aria-label={tr("Cerrar formulario")} onClick={() => setForm(false)}>×</button><span className="eyebrow">{tr("TU APORTE CUENTA")}</span><h2 id="report-title">{tr("Registra un incidente")}</h2><p>{tr("No incluyas nombres, rostros, teléfonos ni otros datos personales.")}</p><form onSubmit={send}><div className="quick-label">{tr("Reporte rápido")}<small>{tr("elige el tipo y marca el lugar")}</small></div><div className="quick-choices">{categories.map((c, i) => <button type="button" key={c} className={category === c ? 'quick-selected' : ''} onClick={() => quickReport(c)}><i style={{
+ {form && <div className="overlay"><section role="dialog" aria-modal="true" aria-labelledby="report-title" className="dialog"><button className="close" aria-label={tr("Cerrar formulario")} onClick={() => setForm(false)}>×</button><span className="eyebrow">{tr("TU APORTE CUENTA")}</span><h2 id="report-title">{tr("Registra un incidente")}</h2><p>{tr("No incluyas nombres, rostros, teléfonos ni otros datos personales.")}</p><form onSubmit={send}><div className="quick-label">{tr("Reporte rápido")}<small>{tr("elige el tipo y marca el lugar")}</small></div><div className="quick-choices">{categories.map((c, i) => <button type="button" key={c} className={category === c ? 'quick-selected' : ''} aria-pressed={category === c} onClick={() => quickReport(c)}><i style={{
                 background: colors[i]
               }} />{tr(c)}</button>)}</div><label>{tr("Detalle opcional")}<textarea minLength={description ? 12 : 0} maxLength={600} placeholder={tr("Si hace falta, añade un detalle sin identificar a nadie…")} value={description} onChange={e => setDescription(e.target.value)} /></label><div className="assist"><button type="button" onClick={() => {
               setCategory(classify(description));

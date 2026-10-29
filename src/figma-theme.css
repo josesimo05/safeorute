@@ -1,0 +1,102 @@
+/* SafeRoute Figma: DFhsi1SCWvI4691B4Sj7rd, screens 3:737–3:886.
+   Keep the live map, responsive panel behavior and saved theme preference. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+  font-family: 'Inter', system-ui, sans-serif;
+  --bg: #edf2f7;
+  --surface: #ffffff;
+  --surface-soft: #e6eef5;
+  --field: #f0f5fa;
+  --ink: #1a283b;
+  --muted: #50657c;
+  --line: #cedae6;
+  --accent: #16664e;
+  --green: var(--accent);
+  --action: #7ce2bc;
+  --action-ink: #173e34;
+  --shadow: 0 12px 36px #101b2b14;
+}
+html[data-theme="dark"] {
+  --bg: #101b2b;
+  --surface: #1a283b;
+  --surface-soft: #293c52;
+  --field: #223247;
+  --ink: #edf4fc;
+  --muted: #a9bcd1;
+  --line: #40566f;
+  --accent: #7ce2bc;
+  --shadow: 0 12px 36px #0003;
+}
+body, html[data-theme="dark"] body { background: var(--bg); color: var(--ink); }
+.brand, h1, .dialog h2 { font-family: 'Inter', system-ui, sans-serif; }
+.brand { color: var(--ink); letter-spacing: -.8px; }
+.brandicon { background: var(--action); color: var(--action-ink); box-shadow: none; }
+.branddot, .eyebrow { color: var(--accent); }
+button, input, select, textarea { border-radius: 12px; }
+button { border-color: var(--line); color: var(--ink); }
+button.primary, html[data-theme="dark"] button.primary {
+  background: var(--action); color: var(--action-ink); box-shadow: none;
+  border-radius: 16px; min-height: 48px; font-weight: 700;
+}
+button.primary:hover { background: #9ceccd; }
+button.primary.wide { min-height: 52px; }
+button:focus-visible, a:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible { outline-color: var(--accent); }
+nav .active, html[data-theme="dark"] nav .active { color: var(--accent); background: var(--surface-soft); }
+.workspace { border-radius: 24px; }
+.aside-title { font-size: 22px; letter-spacing: -.5px; }
+.intro p, label, .dialog p, .dialog small, .mode small, .list-title span,
+.report p, .report small, footer, html[data-theme="dark"] label { color: var(--muted); }
+.report, .route-card, html[data-theme="dark"] .report, html[data-theme="dark"] .route-card {
+  background: var(--surface-soft); border: 1px solid transparent;
+  padding: 15px; margin-bottom: 12px; border-radius: 16px; box-shadow: none;
+}
+.report:hover, .route-card:hover { border-color: var(--accent); }
+.route-card.selected, html[data-theme="dark"] .route-card.selected {
+  border: 1.5px solid var(--accent); background: var(--surface-soft);
+}
+.route-card.selected .route-card-top { color: var(--accent); }
+.category, .route-card-top { font-size: 15px; line-height: 1.45; }
+.report p, .route-card small { font-size: 12px; line-height: 1.55; }
+.report p, .report small, .route-card small, .route-risk { overflow-wrap: anywhere; }
+.route-risk { color: var(--muted); }
+.route-card .tiny { display: block; margin-top: 8px; }
+.hero-tags span, .nav-note, .location-value { color: var(--muted); background: var(--surface-soft); }
+.dialog { border: 1px solid var(--line); border-radius: 28px; padding: 28px; }
+.dialog h2 { padding-inline-end: 32px; font-size: 25px; }
+.quick-choices { gap: 12px; }
+.quick-choices button { min-height: 60px; border-radius: 16px; font-size: 13px; padding: 14px; background: var(--surface-soft); }
+.quick-choices .quick-selected, html[data-theme="dark"] .quick-choices .quick-selected {
+  border-color: var(--accent); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent);
+}
+.location-value { border-radius: 16px; padding: 15px; }
+.guidance-maneuver { background: var(--action); color: var(--action-ink); border-radius: 16px; box-shadow: var(--shadow); }
+.guidance-maneuver span { color: var(--action-ink); }
+.guidance-metrics, .guidance-header, .guidance-instructions { border-radius: 16px; }
+.guidance-actions button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+.guidance-metrics dd { font-size: 26px; }
+.destination-shortcut {
+  display: flex; align-items: center; gap: 14px; width: 100%; text-align: start;
+  margin-bottom: 18px; padding: 16px; min-height: 72px; border-radius: 16px;
+  background: var(--surface-soft); color: var(--ink); border: 1px solid var(--line);
+}
+.destination-shortcut strong { display: block; font-size: 16px; }
+.destination-shortcut small { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
+.destination-shortcut > span:last-child { margin-inline-start: auto; color: var(--accent); font-size: 24px; }
+@media (max-width: 900px) {
+  .workspace { border-radius: 20px; }
+  .workspace aside { border-radius: 22px 22px 0 0; }
+  .panel-toggle { border-radius: 22px 22px 0 0; }
+  .panel-content { padding-inline: 18px; }
+  .aside-title { font-size: 21px; }
+  .dialog { padding: 24px 20px; width: min(100%, 480px); }
+  .quick-choices button { font-size: 12px; }
+  nav { background: var(--surface); border-radius: 18px; }
+  .head-actions .primary { min-height: 44px; }
+}
+@media (min-width: 901px) {
+  .workspace { grid-template-columns: 390px minmax(0, 1fr); }
+  aside { padding: 22px; }
+  .guidance-panel { max-width: 460px; margin-inline: auto; }
+}
