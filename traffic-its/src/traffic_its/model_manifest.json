@@ -1,0 +1,14 @@
+{
+  "name": "yolox_nano",
+  "source_url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx",
+  "code_reference": "0.3.0",
+  "weights_release": "0.1.1rc0",
+  "sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d",
+  "size_bytes": 3659407,
+  "input_size": [
+    416,
+    416
+  ],
+  "verification": "downloaded from official release; digest observed locally, not an independently signed publisher attestation",
+  "license_reference": "https://github.com/Megvii-BaseDetection/YOLOX/blob/0.3.0/LICENSE"
+}

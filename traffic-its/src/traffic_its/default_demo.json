@@ -1,0 +1,248 @@
+{
+  "schema_version": "0.1.0",
+  "camera_id": "cam-demo-01",
+  "road_segment_id": "tramo-demo-01",
+  "source": {
+    "kind": "synthetic",
+    "mode": "demo",
+    "public_alerts_enabled": false
+  },
+  "location": {
+    "country": "DO",
+    "city": "Demostración sintética; ubicación aproximada ilustrativa",
+    "latitude": 18.4861,
+    "longitude": -69.9312
+  },
+  "processing": {
+    "target_processed_fps": 5,
+    "model_input_size_px": [
+      416,
+      416
+    ],
+    "latest_frame_buffer_capacity": 2,
+    "video_timing": "decoded_media_pts",
+    "speed_requires_valid_pts": true,
+    "speed_fit_min_observations": 6,
+    "speed_fit_window_seconds": [
+      1,
+      2
+    ],
+    "free_flow_speed_kmh": 40,
+    "free_flow_reference": "manual_unvalidated"
+  },
+  "calibration": {
+    "status": "synthetic",
+    "calibration_id": "calibracion-sintetica-01",
+    "camera_fixed": true,
+    "frame_size_px": [
+      640,
+      360
+    ],
+    "ground_units": "metres",
+    "fit_points_image_px": [
+      [
+        100,
+        30
+      ],
+      [
+        540,
+        30
+      ],
+      [
+        540,
+        330
+      ],
+      [
+        100,
+        330
+      ]
+    ],
+    "fit_points_ground_m": [
+      [
+        0.0,
+        0.0
+      ],
+      [
+        7.333333333333333,
+        0.0
+      ],
+      [
+        7.333333333333333,
+        50.0
+      ],
+      [
+        0.0,
+        50.0
+      ]
+    ],
+    "independent_control_points": [
+      {
+        "image_px": [
+          150,
+          80
+        ],
+        "ground_m": [
+          0.8333333333333334,
+          8.333333333333334
+        ]
+      },
+      {
+        "image_px": [
+          480,
+          80
+        ],
+        "ground_m": [
+          6.333333333333333,
+          8.333333333333334
+        ]
+      },
+      {
+        "image_px": [
+          150,
+          280
+        ],
+        "ground_m": [
+          0.8333333333333334,
+          41.666666666666664
+        ]
+      },
+      {
+        "image_px": [
+          480,
+          280
+        ],
+        "ground_m": [
+          6.333333333333333,
+          41.666666666666664
+        ]
+      }
+    ],
+    "valid_roi_image_px": [
+      [
+        100,
+        30
+      ],
+      [
+        540,
+        30
+      ],
+      [
+        540,
+        340
+      ],
+      [
+        100,
+        340
+      ]
+    ],
+    "validation_rmse_metres": 0.0
+  },
+  "lanes": [
+    {
+      "id": "lane-1",
+      "polygon_image_px": [
+        [
+          100,
+          30
+        ],
+        [
+          310,
+          30
+        ],
+        [
+          310,
+          340
+        ],
+        [
+          100,
+          340
+        ]
+      ],
+      "centerline_ground_m": [
+        [
+          1.75,
+          0
+        ],
+        [
+          1.75,
+          51.6666666667
+        ]
+      ]
+    },
+    {
+      "id": "lane-2",
+      "polygon_image_px": [
+        [
+          330,
+          30
+        ],
+        [
+          540,
+          30
+        ],
+        [
+          540,
+          340
+        ],
+        [
+          330,
+          340
+        ]
+      ],
+      "centerline_ground_m": [
+        [
+          5.5833333333,
+          0
+        ],
+        [
+          5.5833333333,
+          51.6666666667
+        ]
+      ]
+    }
+  ],
+  "count_lines": [
+    {
+      "id": "line-1",
+      "lane_id": "lane-1",
+      "points_image_px": [
+        [
+          100,
+          250
+        ],
+        [
+          310,
+          250
+        ]
+      ],
+      "direction": 1
+    },
+    {
+      "id": "line-2",
+      "lane_id": "lane-2",
+      "points_image_px": [
+        [
+          330,
+          250
+        ],
+        [
+          540,
+          250
+        ]
+      ],
+      "direction": 1
+    }
+  ],
+  "capability_gates": {
+    "metric_speed_enabled": true,
+    "lane_flow_enabled": true,
+    "specific_cause_publication_enabled": false
+  },
+  "privacy": {
+    "store_video": false,
+    "store_snapshots": false,
+    "store_faces_or_plates": false,
+    "store_persistent_vehicle_identifiers": false,
+    "live_video_preview_enabled": false
+  }
+}

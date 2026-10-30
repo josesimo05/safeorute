@@ -1,0 +1,6 @@
+# Optional override. Set ITS_CAMERA_SOURCE in the ignored .env or secret-managed
+# process environment. Never put its value in a committed config or issue.
+services:
+  worker:
+    environment:
+      ITS_CAMERA_SOURCE: ${ITS_CAMERA_SOURCE:?Set the authorized RTSP source securely}

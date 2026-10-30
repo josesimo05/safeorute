@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#123d32">
+  <meta name="referrer" content="no-referrer">
+  <title>SafeRoute ITS · Estado del tránsito</title>
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/static/style.css">
+  <script defer src="/static/vendor/leaflet/leaflet.js"></script>
+  <script defer src="/static/app.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="brand" aria-label="Inicio de SafeRoute ITS"><span aria-hidden="true">↗</span> SafeRoute <b>ITS</b></a>
+    <div class="connection"><span id="connection-dot" class="status-dot"></span><span id="connection-label" role="status">Conectando…</span></div>
+    <button id="access-toggle" class="quiet" type="button" aria-expanded="false" aria-controls="access-panel">Acceso</button>
+  </header>
+  <main>
+    <section id="access-panel" class="access-panel" hidden aria-labelledby="access-title">
+      <div><h2 id="access-title">Acceso de operador</h2><p>La clave se conserva solo mientras esta página permanece abierta.</p></div>
+      <form id="access-form"><label for="api-token">Clave de acceso</label><div class="access-fields"><input id="api-token" type="password" autocomplete="off" spellcheck="false" placeholder="Introduce la clave del servicio"><button type="submit" class="primary">Conectar</button></div></form>
+      <button id="clear-access" type="button" class="quiet">Cerrar acceso</button>
+    </section>
+    <p id="request-message" class="request-message" role="status" hidden></p>
+    <section class="page-heading"><div><p class="eyebrow">MONITOREO DE TRÁNSITO</p><h1>Lo que observa la vía</h1><p class="subtitle">Flujo, velocidad y alertas con su calidad de medición.</p></div><label class="camera-filter" for="camera-select">Cámara<select id="camera-select"><option value="">Todas las cámaras</option></select></label></section>
+    <div id="source-banner" class="source-banner" role="status">Esperando datos del servicio.</div>
+    <section class="overview" aria-label="Estado de la cámara seleccionada">
+      <article class="metric-card"><span class="metric-label">Velocidad media</span><strong id="speed-value">—</strong><span id="speed-quality" class="metric-note">Sin una medición válida</span></article>
+      <article class="metric-card"><span class="metric-label">Congestión observada</span><strong id="congestion-value">Desconocida</strong><span id="congestion-quality" class="metric-note">Esperando observaciones</span></article>
+      <article class="metric-card"><span class="metric-label">Vehículos contados</span><strong id="count-value">—</strong><span id="count-quality" class="metric-note">Ventana observada, no una proyección</span></article>
+      <article class="metric-card"><span class="metric-label">Salud de la cámara</span><strong id="health-value">Sin datos</strong><span id="freshness-value" class="metric-note">Hora de captura desconocida</span></article>
+    </section>
+    <div class="workspace">
+      <section class="map-section panel" aria-labelledby="map-title"><div class="panel-heading"><div><h2 id="map-title">Cámaras y tramos</h2><p id="map-caption">Solo ubicaciones configuradas.</p></div><button id="basemap-button" type="button" class="quiet">Mostrar mapa base</button></div><div id="traffic-map" aria-label="Mapa de cámaras de tránsito"></div><p id="map-message" class="map-message" role="status">El mapa base es opcional; las mediciones funcionan sin cargarlo.</p><div class="map-legend" aria-label="Leyenda"><span><i class="fluid"></i>Fluido</span><span><i class="moderate"></i>Moderado</span><span><i class="dense"></i>Denso</span><span><i class="stopped"></i>Detenido</span><span><i class="unknown"></i>Sin datos</span></div></section>
+      <section class="panel cameras-section" aria-labelledby="cameras-title"><div class="panel-heading"><h2 id="cameras-title">Estado por cámara</h2><span id="camera-count" class="chip">0 cámaras</span></div><div id="camera-list" class="camera-list"><p class="empty">No hay cámaras disponibles.</p></div></section>
+    </div>
+    <section class="panel lanes-section" aria-labelledby="lanes-title"><div class="panel-heading"><div><h2 id="lanes-title">Aforo por carril</h2><p>Los periodos sin observación no se completan con estimaciones.</p></div><span id="measurement-time" class="chip">Sin observaciones</span></div><div class="table-scroll"><table><thead><tr><th>Cámara / carril</th><th>Carros</th><th>Motos</th><th>Guaguas / buses</th><th>Camiones</th><th>Total</th><th>Velocidad</th><th>Cobertura</th></tr></thead><tbody id="lanes-body"><tr><td colspan="8" class="empty">Todavía no hay aforo por carril.</td></tr></tbody></table></div></section>
+    <section class="panel alerts-section" aria-labelledby="alerts-title"><div class="panel-heading"><div><h2 id="alerts-title">Alertas</h2><p>Una observación no demuestra por sí sola una causa.</p></div><span id="alert-count" class="chip">0 activas</span></div><details class="confidence-help"><summary>¿Qué significa la confianza?</summary><dl><div><dt>Alto</dt><dd>Evidencia suficiente y específica, con corroboración cuando la causa lo requiere.</dd></div><div><dt>Medio</dt><dd>Patrón compatible, pero todavía existen alternativas plausibles.</dd></div><div><dt>Bajo</dt><dd>Causa no determinada: evidencia escasa, ambigua o contradictoria.</dd></div></dl><p>Los problemas de cámara se muestran separados del estado del tránsito. Este piloto no diagnostica accidentes ni averías mecánicas.</p></details><div id="alerts-list" class="alerts-list"><p class="empty">No hay alertas disponibles. Esto no garantiza que la vía esté libre de incidentes.</p></div></section>
+    <section class="panel history-section" aria-labelledby="history-title"><div class="panel-heading"><div><h2 id="history-title">Histórico de mediciones</h2><p id="history-caption">Ventanas conservadas por el servicio, con su cobertura.</p></div><button id="refresh-history" type="button" class="quiet">Actualizar</button></div><div id="history-chart" class="history-chart" aria-label="Conteos de las últimas ventanas"></div><div class="table-scroll"><table><thead><tr><th>Cámara / carril</th><th>Ventana</th><th>Vehículos</th><th>Velocidad</th><th>Cobertura</th><th>Calidad</th></tr></thead><tbody id="history-body"><tr><td colspan="6" class="empty">Sin histórico disponible.</td></tr></tbody></table></div></section>
+  </main>
+  <footer><span>SafeRoute ITS · Piloto de una cámara</span><p>Las mediciones dependen de la calibración y de la visibilidad. No se muestran ni guardan imágenes de cámaras en este dashboard.</p></footer>
+  <noscript><p class="request-message">Activa JavaScript para consultar las mediciones y alertas.</p></noscript>
+</body>
+</html>

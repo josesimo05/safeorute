@@ -1,0 +1,26 @@
+{
+  "schema_version": "0.1.0",
+  "camera_id": "cam-piloto-01",
+  "source": {
+    "kind": "rtsp",
+    "mode": "live",
+    "uri_environment_variable": "ITS_CAMERA_SOURCE",
+    "public_alerts_enabled": false
+  },
+  "location": {
+    "country": "DO",
+    "city": null,
+    "latitude": null,
+    "longitude": null
+  },
+  "calibration": {
+    "status": "unconfigured"
+  },
+  "lanes": [],
+  "count_lines": [],
+  "capability_gates": {
+    "metric_speed_enabled": false,
+    "lane_flow_enabled": false,
+    "specific_cause_publication_enabled": false
+  }
+}

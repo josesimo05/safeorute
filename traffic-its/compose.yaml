@@ -1,0 +1,76 @@
+name: saferoute-its
+
+x-runtime: &runtime
+  image: saferoute-its:0.1.0
+  build: .
+  restart: unless-stopped
+  read_only: true
+  user: "10001:10001"
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=128m
+  stop_grace_period: 30s
+  environment: &runtime-environment
+    ITS_DATABASE_URL: postgresql+psycopg://its:${ITS_DB_PASSWORD:?Run scripts/init_local_env.py or set ITS_DB_PASSWORD}@db:5432/its
+    ITS_API_TOKEN: ${ITS_API_TOKEN:?Run scripts/init_local_env.py or set ITS_API_TOKEN}
+    ITS_DEMO: ${ITS_DEMO:-true}
+    ITS_ALLOWED_ORIGINS: ${ITS_ALLOWED_ORIGINS:-http://127.0.0.1:8000,http://localhost:8000}
+    ITS_CONFIG: /app/configs/${ITS_CAMERA_CONFIG:-demo.json}
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:17.10
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: its
+      POSTGRES_DB: its
+      POSTGRES_PASSWORD: ${ITS_DB_PASSWORD:?Run scripts/init_local_env.py or set ITS_DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U its -d its"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    mem_limit: 1g
+    # The database is reachable only inside this Compose network.
+
+  api:
+    <<: *runtime
+    command: [python, -m, traffic_its.cli, api, --host, "0.0.0.0", --port, "8000"]
+    ports:
+      - "${ITS_BIND_HOST:-127.0.0.1}:${ITS_PORT:-8000}:8000"
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    mem_limit: 768m
+
+  worker:
+    <<: *runtime
+    command: [python, -m, traffic_its.cli, worker]
+    environment:
+      <<: *runtime-environment
+      ITS_MODEL_PATH: /app/models/yolox_nano.onnx
+      OMP_NUM_THREADS: ${ITS_WORKER_THREADS:-2}
+      OPENBLAS_NUM_THREADS: "1"
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./models:/app/models:ro
+    mem_limit: ${ITS_WORKER_MEMORY:-4g}
+    cpus: ${ITS_WORKER_CPUS:-4}
+
+  relay:
+    <<: *runtime
+    command: [python, -m, traffic_its.cli, relay]
+    mem_limit: 384m
+
+volumes:
+  postgres_data:

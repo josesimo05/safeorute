@@ -2,6 +2,8 @@
 
 Prototipo para Colegio Jaime Molina Mota × Actuana Academy, Feria INTEC STEM. React + JavaScript + Leaflet/OpenStreetMap + Firebase + PWA, preparado para GitHub y Vercel.
 
+El [MVP ITS de una cámara](traffic-its/README.md) incluye un servicio Python, API REST/WebSocket y dashboard separado. Empieza con una demostración sintética identificada; las fuentes reales requieren video autorizado y calibración antes de medir velocidad métrica.
+
 ## 1. Abrir en Antigravity
 
 Descomprime esta carpeta y ábrela como proyecto. Instala Node.js LTS compatible con Vite (22.12 o posterior; probado aquí con Node 24). En la terminal de la carpeta:

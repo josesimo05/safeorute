@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0-design",
+  "design_template_only": true,
+  "camera_id": "cam-piloto-01",
+  "source": {
+    "kind": "file",
+    "uri_environment_variable": "ITS_SOURCE_CAM_PILOT_01",
+    "mode": "replay",
+    "public_alerts_enabled": false
+  },
+  "location": {"country": "DO", "city": null, "latitude": null, "longitude": null},
+  "processing": {
+    "target_processed_fps": 5,
+    "model_input_size_px": [416, 416],
+    "latest_frame_buffer_capacity": 2,
+    "video_timing": "decoded_media_pts",
+    "speed_requires_valid_pts": true,
+    "speed_fit_min_observations": 6,
+    "speed_fit_window_seconds": [1, 2]
+  },
+  "calibration": {
+    "status": "unconfigured",
+    "calibration_id": null,
+    "camera_fixed": null,
+    "frame_size_px": null,
+    "preset_id": null,
+    "ground_units": "metres",
+    "fit_points_image_px": [],
+    "fit_points_ground_m": [],
+    "independent_control_points": [],
+    "homography_image_to_ground": null,
+    "valid_roi_image_px": [],
+    "validation_rmse_metres": null
+  },
+  "lanes": [],
+  "count_lines": [],
+  "shoulder_zones": [],
+  "normal_stop_zones": [],
+  "signal_context": {"available": false},
+  "gps_fusion": {"enabled": false},
+  "capability_gates": {
+    "metric_speed_enabled": false,
+    "lane_flow_enabled": false,
+    "specific_cause_publication_enabled": false
+  },
+  "privacy": {
+    "store_video": false,
+    "store_snapshots": false,
+    "store_faces_or_plates": false,
+    "store_persistent_vehicle_identifiers": false,
+    "live_video_preview_enabled": false
+  }
+}

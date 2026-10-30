@@ -1,0 +1,11 @@
+# Optional override for an authorized file. The default compose.yaml never mounts
+# host recordings. This mount is read-only and no archive is written by the app.
+services:
+  worker:
+    environment:
+      ITS_CAMERA_SOURCE: /inputs/${ITS_VIDEO_FILENAME:?Set ITS_VIDEO_FILENAME to the file basename}
+    volumes:
+      - type: bind
+        source: ${ITS_VIDEO_DIRECTORY:?Set ITS_VIDEO_DIRECTORY to an authorized absolute directory}
+        target: /inputs
+        read_only: true
