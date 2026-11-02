@@ -221,7 +221,7 @@ export default function App() {
         !Number.isFinite(camera.speedKmh) ? tr('Velocidad no disponible') : `${new Intl.NumberFormat(language).format(camera.speedKmh)} km/h`;
       popup.append(title, label, measurement);
       L.circleMarker([location.latitude, location.longitude], {
-        radius:10, weight:3, color:'#fff', fillColor:camera.stale ? '#718078' : '#a76b13', fillOpacity:.95
+        radius:10, weight:3, color:'#fff', fillColor:camera.stale ? '#62798C' : '#F4B942', fillOpacity:.95
       }).bindPopup(popup).bindTooltip(tr('Cámara ITS · demostración')).addTo(itsLayer.current);
     }
   }, [itsMarkerSignature, tab, language]);
@@ -331,7 +331,7 @@ export default function App() {
     pointLayer.current.clearLayers();
     if (point) L.circleMarker([point.lat, point.lng], {
       radius: 12,
-      color: '#123c35',
+      color: '#16324F',
       fillOpacity: .2
     }).addTo(pointLayer.current);
   }, [point]);
@@ -343,7 +343,7 @@ export default function App() {
         const active = r.id === (activeRoute?.id || '');
         L.polyline(r.points.map(p => [p.latitude, p.longitude]), {
           className: active ? 'route-line route-line-active' : 'route-line route-line-alternative',
-          color: active ? '#247b5d' : '#879c91',
+          color: active ? '#087F8C' : '#6D8196',
           weight: active ? 7 : 4,
           opacity: active ? 1 : .72,
           dashArray: active ? null : '7 8'
@@ -745,7 +745,7 @@ export default function App() {
   const mapLegend = <div className="legend">{categories.map((c, i) => <span key={c}><i className="legend-dot" style={{
         background: colors[i]
       }} />{tr(c)}</span>)}<span><i>⛽</i>{tr("Gasolinera")}</span><span><i>✚</i>{tr("Farmacia")}</span><span><i>🛒</i>{tr("Supermercado")}</span><span><i>🏥</i>{tr("Hospital")}</span><span><i className="legend-route" />{tr("Ruta elegida")}</span><span><i className="legend-start">{tr("A")}</i>{tr("Origen")}</span><span><i className="legend-end">{tr("B")}</i>{tr("Destino")}</span></div>;
-  return <div className={`app-shell ${routePicking ? `route-picking route-picking-${pickMode.current}` : ''} ${guiding ? 'guidance-mode' : ''}`}><header><a className="brand" href="/" aria-label={tr("SafeRoute inicio")}><span className="brandicon">↗</span>SafeRoute<span className="branddot">.</span></a><nav aria-label={tr("Secciones")}>{['Explorar', 'Patrones', 'Navegar', 'Tráfico ITS', ...(!cloud ? ['Moderación'] : [])].map(t => <button className={tab === t ? 'active' : ''} key={t} onClick={() => {
+  return <div className={`app-shell ${routePicking ? `route-picking route-picking-${pickMode.current}` : ''} ${guiding ? 'guidance-mode' : ''}`}><header><a className="brand" href="/" aria-label={tr("SafeRoute inicio")}><img className="brand-mark" src="/brand-mark.png" alt="" width="38" height="44" /><span className="brand-name" dir="ltr">SafeRoute</span></a><nav aria-label={tr("Secciones")}>{['Explorar', 'Patrones', 'Navegar', 'Tráfico ITS', ...(!cloud ? ['Moderación'] : [])].map(t => <button className={tab === t ? 'active' : ''} key={t} onClick={() => {
           if (t === 'Tráfico ITS') {
             routeRequest.current++;
             locationRequests.current.origin++;
@@ -828,7 +828,7 @@ export default function App() {
                 }}>{tr("Restaurar demostración")}</button></div>}</>}
  </div></aside><div className="map-wrap"><div ref={mapNode} className="map" aria-label={tr("Mapa de reportes comunitarios y rutas")} /><div className="map-label">{picking ? tr('Toca el mapa para elegir {place}', {
               place: tr(pickMode.current === 'origin' ? 'el origen' : 'el destino')
-            }) : tab === 'Navegar' ? tr('Origen A · Destino B') : tab === 'Tráfico ITS' ? tr('Cámaras ITS · ubicaciones de prueba') : tr('Toca para reportar')}</div>{(!online || offlineMap) && <div className="map-offline" role="status"><span>{online ? tr('No se pudo cargar parte del mapa. Puedes reintentarlo.') : tr('El mapa necesita conexión a internet.')}{!cloud && tr(' Tus reportes locales siguen disponibles.')}</span><button type="button" disabled={!online} onClick={() => tiles.current?.redraw()}>{tr("Reintentar mapa")}</button></div>}{tab !== 'Navegar' && tab !== 'Tráfico ITS' && <button className="locate" onClick={locateReport}>{tr("◎ Mi ubicación")}</button>}<details className="map-legend-control"><summary>{tr("Leyenda")}</summary>{tab === 'Tráfico ITS' ? <div className="legend"><span><i className="legend-dot" style={{background:'#a76b13'}} />{tr('Cámara ITS · demostración')}</span></div> : mapLegend}</details>{routePicking && <><div className="picker-crosshair" aria-hidden="true"><span>{pickMode.current === 'origin' ? 'A' : 'B'}</span></div><section className="map-picker" aria-label={tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}><div className="picker-heading"><strong>{tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}</strong><button type="button" onClick={cancelMapPick}>{tr('Cancelar selección')}</button></div><div className="picker-confirm"><p>{tr('Arrastra el mapa y coloca el punto bajo la mira.')}{pickerPoint && <small dir="ltr">{pickerPoint.lat.toFixed(5)}, {pickerPoint.lon.toFixed(5)}</small>}</p><button type="button" className="primary" onClick={confirmMapPick}>{tr(pickMode.current === 'origin' ? 'Confirmar origen' : 'Confirmar destino')}</button></div></section></>}{guiding && activeRoute && <NavigationSession route={activeRoute} onPosition={setNavigationPosition} onStop={stopNavigation} onRecalculate={recalculateNavigation} follow={followPosition} onFollowChange={setFollowPosition} onOverview={() => {
+            }) : tab === 'Navegar' ? tr('Origen A · Destino B') : tab === 'Tráfico ITS' ? tr('Cámaras ITS · ubicaciones de prueba') : tr('Toca para reportar')}</div>{(!online || offlineMap) && <div className="map-offline" role="status"><span>{online ? tr('No se pudo cargar parte del mapa. Puedes reintentarlo.') : tr('El mapa necesita conexión a internet.')}{!cloud && tr(' Tus reportes locales siguen disponibles.')}</span><button type="button" disabled={!online} onClick={() => tiles.current?.redraw()}>{tr("Reintentar mapa")}</button></div>}{tab !== 'Navegar' && tab !== 'Tráfico ITS' && <button className="locate" onClick={locateReport}>{tr("◎ Mi ubicación")}</button>}<details className="map-legend-control"><summary>{tr("Leyenda")}</summary>{tab === 'Tráfico ITS' ? <div className="legend"><span><i className="legend-dot" style={{background:'#F4B942'}} />{tr('Cámara ITS · demostración')}</span></div> : mapLegend}</details>{routePicking && <><div className="picker-crosshair" aria-hidden="true"><span>{pickMode.current === 'origin' ? 'A' : 'B'}</span></div><section className="map-picker" aria-label={tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}><div className="picker-heading"><strong>{tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}</strong><button type="button" onClick={cancelMapPick}>{tr('Cancelar selección')}</button></div><div className="picker-confirm"><p>{tr('Arrastra el mapa y coloca el punto bajo la mira.')}{pickerPoint && <small dir="ltr">{pickerPoint.lat.toFixed(5)}, {pickerPoint.lon.toFixed(5)}</small>}</p><button type="button" className="primary" onClick={confirmMapPick}>{tr(pickMode.current === 'origin' ? 'Confirmar origen' : 'Confirmar destino')}</button></div></section></>}{guiding && activeRoute && <NavigationSession route={activeRoute} onPosition={setNavigationPosition} onStop={stopNavigation} onRecalculate={recalculateNavigation} follow={followPosition} onFollowChange={setFollowPosition} onOverview={() => {
   setFollowPosition(false);
   const height=map.current?.getSize().y || 800;
   map.current?.fitBounds(activeRoute.points.map(p=>[p.latitude,p.longitude]), {paddingTopLeft:[30,Math.min(200,height*.27)],paddingBottomRight:[30,Math.min(250,height*.34)],maxZoom:16});

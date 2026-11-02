@@ -2,6 +2,8 @@
 
 Prototipo para Colegio Jaime Molina Mota × Actuana Academy, Feria INTEC STEM. React + JavaScript + Leaflet/OpenStreetMap + Firebase + PWA, preparado para GitHub y Vercel.
 
+La identidad visual usa azul marino `#16324F`, turquesa oscuro `#087F8C`, blanco suave `#F5F8FA` y ámbar `#F4B942`. El símbolo de casa y ruta aparece en la cabecera, los iconos PWA y el dashboard ITS, con variantes legibles para modo oscuro. La [fuente del logo y las exportaciones](assets/branding/README.md) permiten regenerar los iconos sin añadir dependencias al build normal.
+
 El [MVP ITS de una cámara](traffic-its/README.md) incluye un servicio Python, API REST/WebSocket y dashboard separado. Empieza con una demostración sintética identificada; las fuentes reales requieren video autorizado y calibración antes de medir velocidad métrica.
 
 Para reproducir el ITS desde Internet, consulta la [guía de despliegue público de la demo](traffic-its/deployment/PUBLICAR_DEMO.md): un servicio de lectura con datos sintéticos y escenario de congestión. El enlace Deploy crea otra instancia en una cuenta de alojamiento; la app ya tiene configurada la dirección del servicio indicado abajo.

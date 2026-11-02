@@ -3,7 +3,13 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const model = {token:'', demo:false, operatorReviewAllowed:true, cameras:new Map(), states:new Map(), alerts:new Map(), selected:'', cursor:'0', revisions:new Map(), socket:null, socketGeneration:0, reconnectTimer:null, retry:0, serverOffset:0, connected:false, history:[], snapshotGeneration:0, historyGeneration:0};
-  const colours = {fluido:'#2c8760',moderado:'#c49927',denso:'#cd7437',detenido:'#bb4c43',desconocido:'#718078'};
+  const colours = {fluido:'#087F8C',moderado:'#F4B942',denso:'#A6530A',detenido:'#B6433A',desconocido:'#62798C'};
+  const colourVariables = {fluido:'--fluid',moderado:'--moderate',denso:'--dense',detenido:'--stopped',desconocido:'--unknown'};
+  function themeColour(code,forText=false) {
+    const variable=forText&&code==='moderado'?'--moderate-text':colourVariables[code]||'--unknown';
+    const fallback=colours[code]||colours.desconocido;
+    return forText?'var('+variable+','+fallback+')':getComputedStyle(document.documentElement).getPropertyValue(variable).trim()||fallback;
+  }
   const congestionLabels = {fluido:'Fluido',moderado:'Moderado',denso:'Denso',detenido:'Detenido',desconocido:'Desconocida',unknown:'Desconocida'};
   const healthLabels = {healthy:'Operativa',ok:'Operativa',degraded:'Degradada',offline:'Sin señal',no_frames:'Sin imágenes',unavailable:'No disponible',source_unavailable:'Fuente no disponible',stopped:'Procesamiento detenido',freeze_suspected:'Posible congelamiento',scene_changed:'Encuadre cambiado',view_unusable:'Imagen no utilizable',replay_finished:'Reproducción terminada',starting:'Iniciando',stale:'Datos vencidos',unknown:'Sin datos'};
   let map, markerLayer, tiles;
@@ -161,7 +167,7 @@
     $('speed-quality').textContent=state?stale(state)?'Último dato vencido':state.speed_valid===true?'Estimación en la región calibrada':'No medible: calibración o soporte insuficiente':'Sin una medición válida';
     const congestion=valid?state?.congestion:'desconocido';
     $('congestion-value').textContent=states.length>1?'Por cámara':congestionLabels[congestion]||'Desconocida';
-    $('congestion-value').style.color=colours[congestion]||colours.desconocido;
+    $('congestion-value').style.color=themeColour(congestion,true);
     $('congestion-quality').textContent=state?isDemo(mode)?'Estado simulado, sin precisión real validada':!valid?'Observaciones insuficientes o vencidas':'Estado de la ventana; no identifica una causa':'Esperando observaciones';
     const lanes=Array.isArray(state?.lanes)?state.lanes:[];const countLanes=lanes.filter(lane=>lane.count_valid===true&&finite(lane.count));
     $('count-value').textContent=states.length>1?'Por cámara':valid&&countLanes.length?number(countLanes.reduce((sum,lane)=>sum+lane.count,0)):'—';
@@ -190,7 +196,7 @@
   function cameraPoint(camera) {const loc=camera?.location||{};const lat=loc.latitude??camera?.latitude;const lon=loc.longitude??camera?.longitude;return finite(lat)&&Math.abs(lat)<=90&&finite(lon)&&Math.abs(lon)<=180?[lat,lon]:null;}
   function renderMap() {
     if(!map)return;markerLayer.clearLayers();let located=0;
-    for(const [id,camera] of model.cameras){const point=cameraPoint(camera);if(!point)continue;located++;const state=model.states.get(id);const colour=usable(state)?colours[state.congestion]||colours.desconocido:colours.desconocido;const marker=L.circleMarker(point,{radius:model.selected===id?10:7,color:'#fff',weight:2,fillColor:colour,fillOpacity:1});const popup=node('div');popup.append(node('strong',camera.name||id),node('p',`${isDemo(stateMode(state,camera))?'Ubicación de demostración · ':''}${usable(state)?congestionLabels[state.congestion]||'Desconocida':'Datos no disponibles'}`));marker.bindPopup(popup).on('click',()=>selectCamera(id)).addTo(markerLayer);}
+    for(const [id,camera] of model.cameras){const point=cameraPoint(camera);if(!point)continue;located++;const state=model.states.get(id);const colour=themeColour(usable(state)?state.congestion:'desconocido');const marker=L.circleMarker(point,{radius:model.selected===id?10:7,color:'#16324F',weight:2,fillColor:colour,fillOpacity:1});const popup=node('div');popup.append(node('strong',camera.name||id),node('p',`${isDemo(stateMode(state,camera))?'Ubicación de demostración · ':''}${usable(state)?congestionLabels[state.congestion]||'Desconocida':'Datos no disponibles'}`));marker.bindPopup(popup).on('click',()=>selectCamera(id)).addTo(markerLayer);}
     $('map-caption').textContent=located?`${located} ${located===1?'ubicación configurada':'ubicaciones configuradas'}.`:'Sin ubicación configurada: las cámaras no se colocan en coordenadas inventadas.';
   }
   function initMap() {

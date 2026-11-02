@@ -13,7 +13,7 @@ export default defineConfig({
       // Registration and update confirmation live in the React interface.
       registerType: 'prompt',
       injectRegister: null,
-      includeAssets: ['icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'],
+      includeAssets: ['brand-mark.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'],
       manifest: {
         id: '/',
         name: 'SafeRoute',
@@ -21,8 +21,8 @@ export default defineConfig({
         lang: 'es',
         dir: 'ltr',
         description: 'Reportes comunitarios por zona y horario',
-        theme_color: '#194b3d',
-        background_color: '#f6f7f2',
+        theme_color: '#16324F',
+        background_color: '#F5F8FA',
         display: 'standalone',
         start_url: '/',
         scope: '/',

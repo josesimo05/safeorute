@@ -47,7 +47,8 @@ test('el dashboard móvil distingue datos sintéticos y velocidad no medible sin
   await expect(page.locator('#count-value')).toHaveText('5');
   await expect(page.locator('#freshness-value')).toContainText('captura desconocida');
   await expect(page.locator('#lanes-body tr')).toHaveCount(2);
-  await expect(page.locator('video,img')).toHaveCount(0);
+  await expect(page.locator('video,img:not(.brand-logo)')).toHaveCount(0);
+  await expect(page.locator('.brand-logo')).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await expect(page.locator('#connection-label')).toHaveText('Conectado');
 });
