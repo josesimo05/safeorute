@@ -1,12 +1,13 @@
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from traffic_its.domain import Detection, VideoFrame
-from traffic_its.vision import ByteTrackTracker, SyntheticDetector, YoloXDetector, _nms
+from traffic_its.vision import ByteTrackTracker, SyntheticDetector, YoloXDetector, _nms, synthetic_objects
 
 
 def frame(time):
@@ -21,6 +22,39 @@ def test_synthetic_detector_is_explicit_ground_truth_and_has_known_motion():
     assert second.xyxy[3] - first.xyxy[3] == pytest.approx(10)
     assert (second.xyxy[3] - first.xyxy[3]) / .2 / 6 * 3.6 == pytest.approx(30)
     assert detector.detect(frame(-1)) == []
+
+
+def test_slow_fixture_vehicle_survives_to_cross_counting_line_without_wrapping():
+    detector = SyntheticDetector(SimpleNamespace(source=SimpleNamespace(synthetic_speed_kmh=8)))
+    # The first car reaches y=250 at 17.25 s; the old eight-second retention
+    # would remove it long before crossing and leave aforo permanently at zero.
+    before = detector.detect(frame(17.2))[0]
+    after = detector.detect(frame(17.4))[0]
+    assert before.class_id == after.class_id == 2
+    assert before.xyxy[0] == after.xyxy[0]
+    assert before.xyxy[3] < 250 < after.xyxy[3]
+    assert after.xyxy[3] - before.xyxy[3] == pytest.approx(.2 * 8 / 3.6 * 6)
+    assert len(synthetic_objects(10**6, speed_kmh=8)) <= 60
+
+
+def test_slow_fixture_produces_real_tracker_crossings_and_eight_kmh_measurements():
+    from traffic_its.analytics import Analytics
+    from traffic_its.config import CameraConfig
+
+    payload = json.loads((Path(__file__).parents[1] / 'configs/demo.json').read_text())
+    payload['source']['synthetic_speed_kmh'] = 8
+    config = CameraConfig.model_validate(payload)
+    detector = SyntheticDetector(config)
+    tracker = ByteTrackTracker(5)
+    analytics = Analytics(config)
+    health = {'status': 'healthy', 'usable_for_analytics': True, 'usable_for_speed': True}
+    for index in range(126):
+        sample = frame(index / 5)
+        result = analytics.update(sample, tracker.update(detector.detect(sample)), health)
+    assert result['speed_valid'] and result['mean_speed_kmh'] == pytest.approx(8, abs=.1)
+    assert result['total_count'] == 4
+    assert result['congestion'] == 'denso'
+    assert config.processing.free_flow_speed_kmh == 40
 
 
 def test_bytetrack_preserves_id_and_never_emits_prediction_as_observation():

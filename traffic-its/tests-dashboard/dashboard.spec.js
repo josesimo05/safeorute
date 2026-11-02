@@ -8,8 +8,8 @@ function fixture() {
   const state={camera_id:'cam-demo',road_segment_id:'segment-demo',revision:1,source_mode:'demo',stream_epoch:'demo-epoch',media_time_s:12,capture_at:null,received_at:new Date().toISOString(),health:{status:'healthy'},calibration_status:'synthetic',speed_valid:false,mean_speed_kmh:null,congestion:'desconocido',lanes:[{id:'lane-1',count:3,count_valid:true,speed_valid:false,mean_speed_kmh:null,coverage_seconds:12,counts_by_class:{carro:2,moto:1}},{id:'lane-2',count:2,count_valid:true,speed_valid:false,mean_speed_kmh:null,coverage_seconds:12,counts_by_class:{guagua_bus:1,camion:1}}]};
   return {snapshot:{cameras:[{camera_id:'cam-demo',source:{kind:'synthetic',mode:'demo'},location:{latitude:18.48,longitude:-69.94}}],states:[state],alerts:[],cursor:'1',demo:true,server_time:new Date().toISOString()},state,history:[{camera_id:'cam-demo',lane_id:'lane-1',source_mode:'demo',window_start_media_s:0,duration_seconds:60,count:3,count_valid:true,mean_speed_kmh:null,speed_valid:false,coverage_seconds:12}]};
 }
-async function prepare(page,{requiresToken=false,alerts=[],initialEmpty=false}={}) {
-  const data=fixture();data.snapshot.alerts=alerts;const registeredCameras=[...data.snapshot.cameras];if(initialEmpty){data.snapshot.cameras=[];data.snapshot.states=[];}
+async function prepare(page,{requiresToken=false,alerts=[],initialEmpty=false,capabilities,cameraSource={}}={}) {
+  const data=fixture();data.snapshot.alerts=alerts;data.snapshot.capabilities=capabilities;Object.assign(data.snapshot.cameras[0].source,cameraSource);const registeredCameras=[...data.snapshot.cameras];if(initialEmpty){data.snapshot.cameras=[];data.snapshot.states=[];}
   const requests=[];
   await page.addInitScript(()=>{
     window.wsHandshakes=[];window.mockSockets=[];
@@ -156,4 +156,29 @@ test('la congestión abierta advierte observación vencida al pasar el tiempo si
   await expect(page.locator('.alert-card')).toContainText('Observación vencida; estado actual desconocido.');
   await expect(page.locator('#alert-count')).toHaveText('1 activa');
   await expect(page.locator('#congestion-value')).toHaveText('Desconocida');
+});
+
+test('la demostración pública oculta acceso de operador y explica la retención temporal sin usar claves',async({page})=>{
+  await page.setViewportSize({width:320,height:844});
+  const {requests}=await prepare(page,{capabilities:{operator_review:false}});
+  await expect(page.locator('#connection-label')).toHaveText('Conectado');
+  await expect(page.locator('#access-toggle')).toBeHidden();
+  await expect(page.locator('#access-panel')).toBeHidden();
+  await expect(page.locator('#public-demo-notice')).toHaveText('Demostración pública · solo lectura');
+  await expect(page.locator('#public-demo-notice')).toBeVisible();
+  await expect(page.locator('#source-banner')).toContainText('El histórico de esta demostración se reinicia al reiniciar el servicio.');
+  await expect(page.getByRole('button',{name:'Reconocer',exact:true})).toHaveCount(0);
+  expect(requests.every(request=>!request.authorization)).toBe(true);
+  expect(await page.evaluate(()=>window.wsHandshakes.at(-1).token)).toBeNull();
+  expect(await page.evaluate(()=>[localStorage.length,sessionStorage.length])).toEqual([0,0]);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('el banner identifica la velocidad sintética seleccionada y mantiene compatibilidad con snapshots anteriores',async({page})=>{
+  await prepare(page,{cameraSource:{synthetic_speed_kmh:8,demonstration_label:'Escena sintética a 8 km/h'}});
+  await expect(page.locator('#source-banner')).toContainText('Escena sintética a 8 km/h');
+  await expect(page.locator('#source-banner')).toContainText('No representa tránsito real.');
+  await expect(page.locator('#access-toggle')).toBeVisible();
+  await expect(page.locator('#public-demo-notice')).toBeHidden();
+  await expect(page.locator('#source-banner')).not.toContainText('se reinicia al reiniciar el servicio');
 });

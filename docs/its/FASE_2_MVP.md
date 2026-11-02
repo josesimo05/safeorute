@@ -230,3 +230,15 @@ Para validar con carro y GPS de celular, seguir [VALIDACION_VELOCIDAD.md](VALIDA
 Faltan por confirmar acceso autorizado y tipo de cámara, resolución/codec/FPS, emplazamiento y geometría medida, hardware de destino, SLA, operador, audiencia, presupuesto y retención. Mientras tanto se usa una fuente sintética fija, CPU, 5 FPS objetivo, alertas solo para revisión y ninguna conservación de imágenes o identificadores persistentes. No hay resultados medidos que permitan dar un margen de error en condiciones reales buenas o malas.
 
 La Fase 2 queda lista para revisión funcional del código y la demo. La siguiente fase requiere la aprobación del usuario y no debe confundirse con haber validado un sistema completo para uso público.
+
+## Preparación de la prueba pública — 2 de noviembre de 2026
+
+Se añadió [un perfil de despliegue público de prueba](../../traffic-its/deployment/PUBLICAR_DEMO.md) con entrada `traffic_its.public_demo`. Solo ejecuta la simulación, usa una SQLite temporal nueva y elimina del entorno de esa ejecución las referencias a fuentes, modelos y credenciales operativas. La lectura es anónima; las acciones de operador están deshabilitadas y la interfaz lo indica. El origen HTTPS se configura exactamente para admitir WebSocket detrás del proxy del alojamiento.
+
+El escenario `congestion` genera vehículos a **8 km/h** en la geometría de ensayo, frente a la referencia de **40 km/h**. Se mantienen en escena hasta cruzar la línea: la alerta la produce la regla tras 30 segundos de evidencia, sin insertar alertas prefabricadas. El escenario `fluido` conserva 30 km/h. Ambos siguen siendo simulaciones, sin resultados de precisión sobre cámaras reales.
+
+Los locks ahora incluyen marcadores de plataforma. Se conservan todos los pins anteriores y se añaden únicamente `colorama 0.4.6` y `pyreadline3 3.5.6` para Windows; `uvloop` queda excluido allí. Los dry runs con hashes y wheels binarios resolvieron Linux y Windows/Python 3.12. Esto no constituye una ejecución nativa en Windows.
+
+La suite actual terminó con **119 pruebas Python aprobadas** y una prueba PostgreSQL omitida porque no se inició la base de ensayo en esta ejecución; PostgreSQL conserva el resultado histórico del 30 de octubre, sin atribuirlo a una nueva prueba. El dashboard tiene **11 pruebas Chromium aprobadas**. El despliegue remoto, una URL pública asignada y su comprobación HTTPS/WSS siguen pendientes de habilitar el alojamiento; los checks locales no los sustituyen.
+
+También pasó la prueba integral contra un arranque nuevo del perfil público, por HTTP interno y sin mocks: 8 km/h, conteo 0→8, dos ventanas históricas, 29 estados recibidos por WebSocket, cursor 1→31 y una alerta de congestión tras cumplir la persistencia. El ensayo terminó en 31,837 s; esa duración completa no es una medición p95 de latencia ni de precisión. Los navegadores Chromium de 320 px, 390 px oscuro y 1440 px recibieron datos reales de este backend, sin errores JavaScript ni desbordes y con el acceso de operador oculto. El script [smoke_public_demo.py](../../traffic-its/scripts/smoke_public_demo.py) permite repetirlo contra la URL HTTPS real una vez publicada.

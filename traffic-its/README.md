@@ -8,6 +8,8 @@ Este MVP corresponde a la Fase 2 del [diseño aprobado](../docs/its/FASE_1_DISEN
 
 El [recorrido técnico del MVP](../docs/its/FASE_2_MVP.md) explica los módulos, contratos, diferencias respecto del diseño y comprobaciones de esta entrega.
 
+Para probar desde Internet, usa la [guía de despliegue público de la demo](deployment/PUBLICAR_DEMO.md). Incluye un servicio Docker de lectura, escenario sintético congestionado y enlace oficial de despliegue; requiere crear el servicio en tu cuenta. El enlace de despliegue no es una demo ya publicada.
+
 ## Empezar con la demostración local
 
 Se necesita Python 3.12 y un sistema compatible con los wheels bloqueados. Desde esta carpeta, con [uv](https://docs.astral.sh/uv/):
@@ -21,7 +23,9 @@ uv pip install --python .venv/bin/python --no-deps -e .
 
 Abre `http://127.0.0.1:8000/`. El comando inicia API, procesamiento sintético y relay. Detén con Ctrl+C. La base SQLite local está en `data/`, ignorada por Git; conserva solo agregados, salud y alertas, no frames ni trayectorias. Los pesos ONNX no son necesarios para esta demostración.
 
-En Windows usa `python` para crear el entorno y `.venv\Scripts\python.exe` en lugar de `.venv/bin/python`. Si las bibliotecas nativas del sistema no están disponibles, usa Docker.
+En Windows usa `uv venv .venv --python 3.12` y `.venv\Scripts\python.exe` en lugar de `.venv/bin/python`.
+Antes de arrancar desde PowerShell, configura la caché temporal: `$env:ITS_CACHE_DIRECTORY = Join-Path $env:TEMP 'saferoute-its-cache'`.
+Los locks universales conservan los marcadores específicos de cada sistema; se comprobó su resolución con wheels para Python 3.12 en Linux y Windows, sin afirmar ejecución nativa en Windows. Si faltan bibliotecas del sistema, usa Docker Desktop.
 
 Para una ejecución breve de comprobación:
 
@@ -31,6 +35,8 @@ Para una ejecución breve de comprobación:
 ```
 
 `doctor` informa versiones, proveedores y configuración relevante. La mera importación de una biblioteca no demuestra rendimiento ni precisión local.
+
+Para comprobar el motor de alertas usa `demo --scenario congestion`: genera vehículos a 8 km/h, conserva la referencia sintética de flujo de 40 km/h y espera 30 segundos de evidencia antes de alertar. `--scenario fluido` genera 30 km/h. Ambos son datos sintéticos y usan el mismo renderizado, detector de demostración, seguimiento, geometría y reglas; el escenario no inserta alertas prefabricadas ni diagnostica causas reales.
 
 ## Docker Compose con PostgreSQL
 

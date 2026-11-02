@@ -1,0 +1,23 @@
+# Public, read-only SYNTHETIC test. This does not connect traffic cameras.
+# Review the available free plan and account terms before creating the service.
+services:
+  - type: web
+    name: safeorute-its-demo
+    runtime: docker
+    plan: free
+    branch: main
+    rootDir: traffic-its
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: python -m traffic_its.public_demo
+    autoDeploy: false
+    healthCheckPath: /readyz
+    envVars:
+      - key: ITS_DEMO
+        value: "true"
+      - key: ITS_DEMO_SCENARIO
+        value: congestion
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"

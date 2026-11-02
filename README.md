@@ -4,6 +4,8 @@ Prototipo para Colegio Jaime Molina Mota × Actuana Academy, Feria INTEC STEM. R
 
 El [MVP ITS de una cámara](traffic-its/README.md) incluye un servicio Python, API REST/WebSocket y dashboard separado. Empieza con una demostración sintética identificada; las fuentes reales requieren video autorizado y calibración antes de medir velocidad métrica.
 
+Para probar el ITS desde Internet, está preparado el [despliegue público de la demo](traffic-its/deployment/PUBLICAR_DEMO.md): un servicio de lectura con datos sintéticos y escenario de congestión. El enlace de despliegue requiere crear el servicio en una cuenta de alojamiento; no es una demo ya publicada.
+
 ## 1. Abrir en Antigravity
 
 Descomprime esta carpeta y ábrela como proyecto. Instala Node.js LTS compatible con Vite (22.12 o posterior; probado aquí con Node 24). En la terminal de la carpeta:

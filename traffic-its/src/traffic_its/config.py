@@ -52,6 +52,7 @@ class SourceConfig(ConfigModel):
     kind: Literal["synthetic", "file", "rtsp"]
     mode: Literal["demo", "replay", "live"]
     uri_environment_variable: Annotated[str, Field(pattern=r"^[A-Z_][A-Z0-9_]*$")] | None = None
+    synthetic_speed_kmh: Annotated[FiniteFloat, Field(ge=8, le=60)] | None = None
     public_alerts_enabled: Literal[False] = False
 
     @model_validator(mode="after")
@@ -63,6 +64,8 @@ class SourceConfig(ConfigModel):
             raise ValueError("La fuente real requiere el nombre de una variable de entorno")
         if self.kind == "synthetic" and self.uri_environment_variable is not None:
             raise ValueError("La fuente sintética no usa una URI ni una variable de fuente")
+        if self.kind != "synthetic" and self.synthetic_speed_kmh is not None:
+            raise ValueError("La velocidad sintética solo se configura para una fuente sintética")
         return self
 
 
@@ -266,6 +269,9 @@ def public_config(config: CameraConfig) -> dict:
     """Metadatos de dashboard: nunca URI, nombres de secretos ni puntos de ajuste."""
     result = config.model_dump(mode="json")
     result["source"] = {"kind": config.source.kind, "mode": config.source.mode, "public_alerts_enabled": False}
+    if config.source.kind == "synthetic" and config.source.synthetic_speed_kmh is not None:
+        result["source"]["synthetic_speed_kmh"] = config.source.synthetic_speed_kmh
+        result["source"]["demonstration_label"] = f"Escena sintética a {config.source.synthetic_speed_kmh:g} km/h"
     result["calibration"] = {
         "status": config.calibration.status,
         "calibration_id": config.calibration.calibration_id,

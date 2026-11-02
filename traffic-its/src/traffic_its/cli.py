@@ -10,6 +10,7 @@ import logging
 import os
 from pathlib import Path
 import signal
+import tempfile
 from threading import Event, Thread, Timer
 import urllib.request
 
@@ -17,7 +18,7 @@ from . import __version__
 
 ROOT = Path(__file__).resolve().parents[2]
 # Writable, task-specific caches; never redirect the user's home directory.
-cache_root = Path(os.environ.get('ITS_CACHE_DIRECTORY', '/tmp/saferoute-its-cache'))
+cache_root = Path(os.environ.get('ITS_CACHE_DIRECTORY', str(Path(tempfile.gettempdir()) / 'saferoute-its-cache')))
 os.environ.setdefault('MPLCONFIGDIR', str(cache_root / 'matplotlib'))
 os.environ.setdefault('XDG_CACHE_HOME', str(cache_root / 'xdg'))
 for cache_path in (os.environ['MPLCONFIGDIR'], os.environ['XDG_CACHE_HOME']):
@@ -34,6 +35,20 @@ def config_path(value: str | None) -> Path:
         return Path(value or os.environ['ITS_CONFIG'])
     path = ROOT / 'configs' / 'demo.json'
     return path if path.exists() else Path(__file__).with_name('default_demo.json')
+
+
+def demo_config(scenario: str = 'fluido'):
+    """Escenarios sintéticos explícitos; conserva geometría y referencia de 40 km/h."""
+    from .config import CameraConfig, load_camera_config
+    if scenario not in {'fluido', 'congestion'}:
+        raise ValueError('Escenario de demostración no reconocido.')
+    path = ROOT / 'configs' / 'demo.json'
+    config = load_camera_config(path if path.exists() else Path(__file__).with_name('default_demo.json'))
+    if config.source.kind != 'synthetic':
+        raise ValueError('El comando demo solo acepta una fuente sintética.')
+    data = config.model_dump(mode='json')
+    data['source']['synthetic_speed_kmh'] = 30 if scenario == 'fluido' else 8
+    return CameraConfig.model_validate(data)
 
 
 def store_with_retry(database: str, stop: Event):
@@ -120,6 +135,8 @@ def main(argv=None) -> int:
         command.add_argument('--port', type=int, default=8000)
         if name == 'demo':
             command.add_argument('--duration', type=float, default=None)
+            command.add_argument('--scenario', choices=['fluido', 'congestion'], default='fluido',
+                                 help='Datos sintéticos a 30 u 8 km/h; no son tráfico real')
     worker_command = commands.add_parser('worker')
     worker_command.add_argument('--config', default=None)
     worker_command.add_argument('--duration', type=float, default=None)
@@ -171,9 +188,8 @@ def main(argv=None) -> int:
         from .api import create_app
         import uvicorn
         if args.command == 'demo':
-            from .config import load_camera_config
             from .worker import run_worker
-            config = load_camera_config(ROOT / 'configs' / 'demo.json' if (ROOT / 'configs' / 'demo.json').exists() else Path(__file__).with_name('default_demo.json'))
+            config = demo_config(args.scenario)
             failure = []
             def demo_worker():
                 try:

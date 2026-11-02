@@ -27,6 +27,33 @@ def test_demo_is_explicit_and_uses_known_synthetic_geometry():
     assert config.count_lines[0].lane_id == config.lanes[0].id
 
 
+def test_demo_speed_is_optional_and_exposed_as_a_generated_scene_setting():
+    payload = demo_payload()
+    assert CameraConfig.model_validate(payload).source.synthetic_speed_kmh is None
+    payload['source']['synthetic_speed_kmh'] = 8
+    config = CameraConfig.model_validate(payload)
+    public = public_config(config)['source']
+    assert public['synthetic_speed_kmh'] == 8
+    assert public['demonstration_label'] == 'Escena sintética a 8 km/h'
+    assert config.processing.free_flow_speed_kmh == 40
+
+
+@pytest.mark.parametrize('name', ['file.json', 'rtsp.json'])
+def test_real_sources_reject_synthetic_motion_settings(name):
+    payload = json.loads((CONFIG_DIR / name).read_text())
+    payload['source']['synthetic_speed_kmh'] = 8
+    with pytest.raises(ValidationError, match='velocidad sintética'):
+        CameraConfig.model_validate(payload)
+
+
+@pytest.mark.parametrize('value', [7.9, 60.1, float('nan'), float('inf')])
+def test_demo_speed_must_be_finite_and_within_the_fixture_range(value):
+    payload = demo_payload()
+    payload['source']['synthetic_speed_kmh'] = value
+    with pytest.raises(ValidationError):
+        CameraConfig.model_validate(payload)
+
+
 @pytest.mark.parametrize("name,kind,mode", [("file.json", "file", "replay"), ("rtsp.json", "rtsp", "live")])
 def test_real_sources_never_invent_calibration_or_lane_flow(name, kind, mode):
     config = load_camera_config(CONFIG_DIR / name)

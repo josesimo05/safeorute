@@ -87,7 +87,9 @@ def create_app(database_url: str | None = None, token: str | None = None,
 
     @app.get('/v1/snapshot')
     async def snapshot(demo_only: bool = Depends(read_access)):
-        return await asyncio.to_thread(store.snapshot, demo_only)
+        result = await asyncio.to_thread(store.snapshot, demo_only)
+        result['capabilities'] = {'operator_review': bool(expected_token)}
+        return result
 
     @app.get('/v1/cameras')
     async def camera_list(demo_only: bool = Depends(read_access)):

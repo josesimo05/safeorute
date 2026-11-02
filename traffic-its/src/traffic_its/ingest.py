@@ -168,11 +168,12 @@ class VideoSource:
     def _synthetic_frames(self) -> Iterator[VideoFrame]:
         import cv2
         import numpy as np
-        from .vision import synthetic_objects
+        from .vision import configured_synthetic_speed, synthetic_objects
 
         processing = _field(self.config, "processing")
         fps = float(_field(processing, "target_processed_fps", 5))
         period = 1 / max(0.1, fps)
+        speed_kmh = configured_synthetic_speed(self.config)
         self.status = "synthetic_running"
         start = time.monotonic()
         index = 0
@@ -187,7 +188,7 @@ class VideoSource:
             cv2.line(image, (540, 0), (540, 359), (210, 210, 210), 3)
             for y in range(0, 360, 45):
                 cv2.line(image, (320, y), (320, min(359, y + 25)), (220, 220, 220), 3)
-            for detection in synthetic_objects(media_time):
+            for detection in synthetic_objects(media_time, speed_kmh):
                 x1, y1, x2, y2 = map(int, detection.xyxy)
                 color = {2: (70, 170, 210), 3: (180, 130, 70), 5: (75, 170, 100), 7: (130, 90, 170)}[detection.class_id]
                 cv2.rectangle(image, (x1, y1), (x2, y2), color, -1)

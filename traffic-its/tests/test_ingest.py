@@ -67,6 +67,26 @@ def test_synthetic_source_has_media_timing_and_stops_cooperatively():
     assert source.status == "stopped"
 
 
+def test_synthetic_renderer_and_detector_share_the_configured_slow_motion():
+    from traffic_its.vision import SyntheticDetector
+
+    settings = config('synthetic', fps=5)
+    settings.source.synthetic_speed_kmh = 8
+    stop = Event()
+    source = VideoSource(settings, stop)
+    samples = source.frames()
+    next(samples)
+    second = next(samples)
+    stop.set()
+    assert list(samples) == []
+    box = SyntheticDetector(settings).detect(second)[0].xyxy
+    assert second.media_time_s == pytest.approx(.2)
+    assert box[3] == pytest.approx(20 + .2 * 8 / 3.6 * 6)
+    bottom = int(box[3])
+    assert second.image[bottom, 205].tolist() == [70, 170, 210]
+    assert second.image[bottom + 1, 205].tolist() == [75, 75, 75]
+
+
 def test_latest_buffer_is_bounded_and_returns_newest_decoded_frame():
     class FastSource:
         status = "running"

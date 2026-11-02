@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#123d32">
   <meta name="referrer" content="no-referrer">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%228%22%20fill%3D%22%23123d32%22%2F%3E%3Cpath%20d%3D%22M10%2022%2022%2010M10%2010h12v12%22%20fill%3D%22none%22%20stroke%3D%22%2392d0a5%22%20stroke-width%3D%223%22%2F%3E%3C%2Fsvg%3E">
   <title>SafeRoute ITS · Estado del tránsito</title>
   <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="/static/style.css">
@@ -25,6 +26,7 @@
       <button id="clear-access" type="button" class="quiet">Cerrar acceso</button>
     </section>
     <p id="request-message" class="request-message" role="status" hidden></p>
+    <p id="public-demo-notice" class="public-demo-notice" role="note" hidden>Demostración pública · solo lectura</p>
     <section class="page-heading"><div><p class="eyebrow">MONITOREO DE TRÁNSITO</p><h1>Lo que observa la vía</h1><p class="subtitle">Flujo, velocidad y alertas con su calidad de medición.</p></div><label class="camera-filter" for="camera-select">Cámara<select id="camera-select"><option value="">Todas las cámaras</option></select></label></section>
     <div id="source-banner" class="source-banner" role="status">Esperando datos del servicio.</div>
     <section class="overview" aria-label="Estado de la cámara seleccionada">

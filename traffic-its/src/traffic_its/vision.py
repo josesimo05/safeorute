@@ -15,15 +15,31 @@ import numpy as np
 from .domain import Detection, TrackObservation, VEHICLE_CLASSES, VideoFrame
 
 
-def synthetic_objects(media_time_s: float) -> list[Detection]:
-    """Synthetic vehicles move down at 50 px/s: 30 km/h with demo y/6 mapping."""
+def configured_synthetic_speed(config=None) -> float:
+    """Shared fixture setting for the renderer and its ground-truth detector."""
+    source = config.get("source") if isinstance(config, dict) else getattr(config, "source", None)
+    value = source.get("synthetic_speed_kmh") if isinstance(source, dict) else getattr(source, "synthetic_speed_kmh", None)
+    return 30.0 if value is None else float(value)
+
+
+def synthetic_objects(media_time_s: float, speed_kmh: float = 30) -> list[Detection]:
+    """Constant fixture motion on demo geometry: six image pixels per metre.
+
+    Vehicles spawn every two seconds and keep their trajectory until exiting.
+    Slow scenarios retain older spawns rather than removing them before they
+    reach the counting line. This is generated ground truth, not real traffic.
+    """
     if not math.isfinite(media_time_s) or media_time_s < 0:
         return []
+    if not math.isfinite(speed_kmh) or not 8 <= speed_kmh <= 60:
+        raise ValueError("La velocidad de la escena sintética debe estar entre 8 y 60 km/h.")
+    pixels_per_second = speed_kmh / 3.6 * 6
     objects = []
     last_spawn = int(media_time_s // 2)
-    for spawn in range(max(0, last_spawn - 4), last_spawn + 1):
+    lookback_spawns = math.ceil(360 / pixels_per_second / 2)
+    for spawn in range(max(0, last_spawn - lookback_spawns), last_spawn + 1):
         elapsed = media_time_s - spawn * 2
-        bottom = 20 + elapsed * 50
+        bottom = 20 + elapsed * pixels_per_second
         if not (0 <= bottom <= 380):
             continue
         class_id = [2, 3, 5, 7][spawn % 4]
@@ -40,9 +56,10 @@ class SyntheticDetector:
 
     def __init__(self, config=None):
         self.config = config
+        self.speed_kmh = configured_synthetic_speed(config)
 
     def detect(self, frame: VideoFrame) -> list[Detection]:
-        return synthetic_objects(frame.media_time_s) if frame.media_time_s is not None else []
+        return synthetic_objects(frame.media_time_s, self.speed_kmh) if frame.media_time_s is not None else []
 
 
 def _nms(boxes: np.ndarray, scores: np.ndarray, threshold: float) -> list[int]:

@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  const model = {token:'', demo:false, cameras:new Map(), states:new Map(), alerts:new Map(), selected:'', cursor:'0', revisions:new Map(), socket:null, socketGeneration:0, reconnectTimer:null, retry:0, serverOffset:0, connected:false, history:[], snapshotGeneration:0, historyGeneration:0};
+  const model = {token:'', demo:false, operatorReviewAllowed:true, cameras:new Map(), states:new Map(), alerts:new Map(), selected:'', cursor:'0', revisions:new Map(), socket:null, socketGeneration:0, reconnectTimer:null, retry:0, serverOffset:0, connected:false, history:[], snapshotGeneration:0, historyGeneration:0};
   const colours = {fluido:'#2c8760',moderado:'#c49927',denso:'#cd7437',detenido:'#bb4c43',desconocido:'#718078'};
   const congestionLabels = {fluido:'Fluido',moderado:'Moderado',denso:'Denso',detenido:'Detenido',desconocido:'Desconocida',unknown:'Desconocida'};
   const healthLabels = {healthy:'Operativa',ok:'Operativa',degraded:'Degradada',offline:'Sin señal',no_frames:'Sin imágenes',unavailable:'No disponible',source_unavailable:'Fuente no disponible',stopped:'Procesamiento detenido',freeze_suspected:'Posible congelamiento',scene_changed:'Encuadre cambiado',view_unusable:'Imagen no utilizable',replay_finished:'Reproducción terminada',starting:'Iniciando',stale:'Datos vencidos',unknown:'Sin datos'};
@@ -59,6 +59,9 @@
       if(generation!==model.snapshotGeneration)return false;
       if(reset)clearData();
       model.demo=snapshot.demo===true;
+      // Older servers omit capabilities and retain their operator controls.
+      model.operatorReviewAllowed=snapshot.capabilities?.operator_review!==false;
+      if(!model.operatorReviewAllowed){model.token='';$('api-token').value='';}
       if(snapshot.server_time){const server=Date.parse(snapshot.server_time);if(Number.isFinite(server))model.serverOffset=server-Date.now();}
       model.cameras.clear();model.states.clear();model.alerts.clear();
       for(const camera of items(snapshot.cameras)){const id=camera.camera_id||camera.id;if(!id)continue;model.cameras.set(id,{...camera,camera_id:id});if(camera.state)acceptState({...camera.state,camera_id:id});}
@@ -71,7 +74,7 @@
     }catch(error){
       if(generation!==model.snapshotGeneration)return false;
       connection(error.auth?'Acceso requerido':'Servicio no disponible','error');showMessage(error.message);
-      if(error.auth){$('access-panel').hidden=false;$('access-toggle').setAttribute('aria-expanded','true');}
+      if(error.auth&&model.operatorReviewAllowed){$('access-panel').hidden=false;$('access-toggle').setAttribute('aria-expanded','true');}
       renderOverview();return false;
     }
   }
@@ -139,9 +142,15 @@
   }
   function renderOverview() {
     const states=selectedStates();const state=states.length===1?states[0]:null;
-    const mode=stateMode(state,model.cameras.get(model.selected));const valid=usable(state);const banner=$('source-banner');
+    const camera=model.cameras.get(model.selected);
+    const mode=stateMode(state,camera);const valid=usable(state);const banner=$('source-banner');
     banner.className='source-banner';
-    if(isDemo(mode)){banner.classList.add('demo');banner.textContent='DEMOSTRACIÓN SINTÉTICA · Vehículos y mediciones generados para probar el sistema. No representa tránsito real.';}
+    if(isDemo(mode)){
+      banner.classList.add('demo');banner.textContent='DEMOSTRACIÓN SINTÉTICA · Vehículos y mediciones generados para probar el sistema. No representa tránsito real.';
+      const label=camera?.source?.demonstration_label;
+      if(label)banner.textContent+=` ${text(label,'')}.`;
+      if(model.demo&&!model.operatorReviewAllowed)banner.textContent+=' El histórico de esta demostración se reinicia al reiniciar el servicio.';
+    }
     else if(mode==='replay'){banner.classList.add('replay');banner.textContent='VIDEO GRABADO · Son mediciones de una reproducción. No describen el tránsito actual.';}
     else if(mode==='live'){banner.textContent='FUENTE DE CÁMARA · Mediciones sobre la ventana observada. La vigencia depende del reloj de captura y de la calidad de la imagen.';}
     else banner.textContent=states.length>1?'Selecciona una cámara para consultar sus mediciones.':'Esperando datos del servicio.';
@@ -214,7 +223,7 @@
       if(alertObservationStale(alert))article.append(node('p','Observación vencida; estado actual desconocido.','alert-observation-stale'));
       article.append(node('p','Observado','alert-label'));const observations=Array.isArray(alert.observed)?alert.observed:alert.observed?[alert.observed]:[];const facts=node('ul');for(const fact of observations)facts.append(node('li',factDescription(fact)));if(!observations.length)facts.append(node('li','No hay observaciones detalladas disponibles.'));article.append(facts,node('p','Causa probable','alert-label'),node('p',cause?.description||cause?.label||'Causa no determinada. Este piloto informa hechos y estado de la cámara.'));
       const criteria=cause?.criteria_met||[];if(criteria.length)article.append(node('p',`Criterio: ${criteria.map(value=>text(value,'').replaceAll('_',' ')).join('; ')}.`));const missing=cause?.missing_evidence||[];if(missing.length)article.append(node('p',`Por confirmar: ${missing.map(value=>text(value,'').replaceAll('_',' ')).join('; ')}.`));article.append(node('p','Acción recomendada','alert-label'),node('p',alert.recommended_action||'Revisar el estado y la calidad de la cámara.'));
-      if(model.token&&!acknowledgedAlert(alert)){const acknowledge=node('button','Reconocer','quiet');acknowledge.type='button';acknowledge.addEventListener('click',async()=>{acknowledge.disabled=true;try{await request(`/v1/alerts/${encodeURIComponent(alert.alert_id||alert.id)}/review`,{method:'POST',body:JSON.stringify({action:'acknowledge'})});stopSocket();if(await refreshSnapshot())connectSocket();}catch(error){showMessage(error.message);acknowledge.disabled=false;}});article.append(acknowledge);}else if(acknowledgedAlert(alert))article.append(node('p','Reconocida por un operador','alert-context'));list.append(article);
+      if(model.operatorReviewAllowed&&model.token&&!acknowledgedAlert(alert)){const acknowledge=node('button','Reconocer','quiet');acknowledge.type='button';acknowledge.addEventListener('click',async()=>{acknowledge.disabled=true;try{await request(`/v1/alerts/${encodeURIComponent(alert.alert_id||alert.id)}/review`,{method:'POST',body:JSON.stringify({action:'acknowledge'})});stopSocket();if(await refreshSnapshot())connectSocket();}catch(error){showMessage(error.message);acknowledge.disabled=false;}});article.append(acknowledge);}else if(acknowledgedAlert(alert))article.append(node('p','Reconocida por un operador','alert-context'));list.append(article);
     }
     if(!alerts.length)list.append(node('p','No hay alertas disponibles. Esto no garantiza que la vía esté libre de incidentes.','empty'));
   }
@@ -235,11 +244,16 @@
     const ns='http://www.w3.org/2000/svg';const svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 720 120');svg.setAttribute('role','img');svg.setAttribute('aria-label','Vehículos contados por ventana; cada barra representa una ventana conservada.');const max=Math.max(1,...values.map(row=>row.count));const step=700/values.length;
     for(let i=0;i<values.length;i++){const value=values[i];const height=value.count/max*80;const rect=document.createElementNS(ns,'rect');rect.setAttribute('x',String(10+i*step+step*.12));rect.setAttribute('y',String(94-height));rect.setAttribute('width',String(Math.max(2,step*.76)));rect.setAttribute('height',String(Math.max(1,height)));rect.setAttribute('rx','3');const title=document.createElementNS(ns,'title');title.textContent=`${value.camera_id||''} / ${value.lane_id||''}: ${value.count} vehículos, ${number(value.coverage_seconds,1)} segundos observados`;rect.append(title);svg.append(rect);const label=document.createElementNS(ns,'text');label.setAttribute('x',String(10+i*step+step/2));label.setAttribute('y','110');label.setAttribute('text-anchor','middle');label.textContent=String(value.count);svg.append(label);}chart.append(svg);
   }
-  function renderAll() {renderSelect();renderOverview();renderCameras();renderMap();renderLanes();renderAlerts();}
+  function renderCapabilities() {
+    $('access-toggle').hidden=!model.operatorReviewAllowed;
+    $('public-demo-notice').hidden=!(model.demo&&!model.operatorReviewAllowed);
+    if(!model.operatorReviewAllowed){$('access-panel').hidden=true;$('access-toggle').setAttribute('aria-expanded','false');}
+  }
+  function renderAll() {renderCapabilities();renderSelect();renderOverview();renderCameras();renderMap();renderLanes();renderAlerts();}
 
   $('camera-select').addEventListener('change',event=>selectCamera(event.target.value));
-  $('access-toggle').addEventListener('click',()=>{const open=$('access-panel').hidden;$('access-panel').hidden=!open;$('access-toggle').setAttribute('aria-expanded',String(open));if(open)$('api-token').focus();});
-  $('access-form').addEventListener('submit',async event=>{event.preventDefault();stopSocket();model.token=$('api-token').value.trim();$('api-token').value='';clearData();connection('Conectando…');if(await refreshSnapshot()){connectSocket();$('access-panel').hidden=true;$('access-toggle').setAttribute('aria-expanded','false');}});
+  $('access-toggle').addEventListener('click',()=>{if(!model.operatorReviewAllowed)return;const open=$('access-panel').hidden;$('access-panel').hidden=!open;$('access-toggle').setAttribute('aria-expanded',String(open));if(open)$('api-token').focus();});
+  $('access-form').addEventListener('submit',async event=>{event.preventDefault();if(!model.operatorReviewAllowed){$('api-token').value='';return;}stopSocket();model.token=$('api-token').value.trim();$('api-token').value='';clearData();connection('Conectando…');if(await refreshSnapshot()){connectSocket();$('access-panel').hidden=true;$('access-toggle').setAttribute('aria-expanded','false');}});
   $('clear-access').addEventListener('click',async()=>{stopSocket();model.token='';$('api-token').value='';clearData();if(await refreshSnapshot())connectSocket();});
   $('refresh-history').addEventListener('click',loadHistory);
   window.addEventListener('online',()=>{stopSocket();refreshSnapshot().then(ok=>{if(ok)connectSocket();});});
