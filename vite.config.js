@@ -10,8 +10,9 @@ export default defineConfig({
     supportViteProxy(),
     react(),
     VitePWA({
-      // Registration and update confirmation live in the React interface.
-      registerType: 'prompt',
+      // Activate completed releases automatically. React defers the page reload
+      // while a report, route, or another unfinished task is open.
+      registerType: 'autoUpdate',
       injectRegister: null,
       includeAssets: ['brand-mark.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'],
       manifest: {
@@ -37,8 +38,8 @@ export default defineConfig({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api(?:\/|$)/],
         cleanupOutdatedCaches: true,
-        skipWaiting: false,
-        clientsClaim: false,
+        skipWaiting: true,
+        clientsClaim: true,
         // Cache only the app shell, never map tiles or authenticated API data.
         runtimeCaching: [],
       },

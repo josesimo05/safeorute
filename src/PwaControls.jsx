@@ -14,35 +14,35 @@ export default function PwaControls({online, editing, demo}) {
   const [installError, setInstallError] = useState('');
   const [registrationError, setRegistrationError] = useState(false);
   const [cached, setCached] = useState(false);
-  const [updating, setUpdating] = useState(false);
-  const [updateError, setUpdateError] = useState('');
   const [reloadPending, setReloadPending] = useState(false);
+  const [visible, setVisible] = useState(() => document.visibilityState === 'visible');
   const detailsRef = useRef(null);
   const editingRef = useRef(editing);
   const registrationRef = useRef(null);
+  const reloadStartedRef = useRef(false);
+  const lastUpdateCheckRef = useRef(0);
   editingRef.current = editing;
 
   const {
     offlineReady: [offlineReady],
-    needRefresh: [needRefresh],
-    updateServiceWorker,
   } = useRegisterSW({
     immediate: true,
     onRegisteredSW(_url, registration) {
       registrationRef.current = registration;
-      if (registration?.active) setCached(true);
+      if (registration?.active) {
+        setCached(true);
+        // Check on every visit, including installed windows left open overnight.
+        lastUpdateCheckRef.current = Date.now();
+        registration.update().catch(() => {});
+      }
     },
     onRegisterError() {
       setRegistrationError(true);
     },
     onNeedReload() {
-      // An update activated in another tab must not discard a report here.
-      if (editingRef.current) {
-        setReloadPending(true);
-        setUpdating(false);
-      } else {
-        window.location.reload();
-      }
+      // Activation may come from another tab. Reload only through the guarded
+      // effect below, never directly from the service worker event.
+      setReloadPending(true);
     },
   });
 
@@ -70,23 +70,57 @@ export default function PwaControls({online, editing, demo}) {
   }, []);
 
   useEffect(() => {
-    // Recheck on return/reconnection so long-lived installed apps find updates.
-    const check = () => {
-      if (navigator.onLine && document.visibilityState === 'visible') {
-        registrationRef.current?.update().catch(() => {});
-      }
+    // Also catch controller changes from other tabs/registration timing races.
+    // The first installation claiming this page is not an app update.
+    if (!('serviceWorker' in navigator)) return;
+    let previousController = navigator.serviceWorker.controller;
+    const changed = () => {
+      const controller = navigator.serviceWorker.controller;
+      if (previousController && controller && controller !== previousController) setReloadPending(true);
+      previousController = controller;
     };
+    navigator.serviceWorker.addEventListener('controllerchange', changed);
+    return () => navigator.serviceWorker.removeEventListener('controllerchange', changed);
+  }, []);
+
+  useEffect(() => {
+    // Recheck on return/reconnection and periodically in long-lived windows.
+    // Only visible, online clients check; throttle noisy focus/network events.
+    const check = () => {
+      setVisible(document.visibilityState === 'visible');
+      const registration = registrationRef.current;
+      if (!registration || !navigator.onLine || document.visibilityState !== 'visible') return;
+      if (Date.now() - lastUpdateCheckRef.current < 60_000) return;
+      lastUpdateCheckRef.current = Date.now();
+      registration.update().catch(() => {});
+    };
+    const interval = window.setInterval(check, 5 * 60_000);
+    window.addEventListener('focus', check);
     window.addEventListener('online', check);
     document.addEventListener('visibilitychange', check);
     return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', check);
       window.removeEventListener('online', check);
       document.removeEventListener('visibilitychange', check);
     };
   }, []);
 
   useEffect(() => {
-    if ((needRefresh || reloadPending || registrationError) && detailsRef.current) detailsRef.current.open = true;
-  }, [needRefresh, reloadPending, registrationError]);
+    if (registrationError && detailsRef.current) detailsRef.current.open = true;
+  }, [registrationError]);
+
+  useEffect(() => {
+    if (!reloadPending || editing || !visible) return;
+    // Brief idle delay lets a newly opened task cancel the reload. All update
+    // signals share this guard, so one release cannot cause duplicate reloads.
+    const timer = window.setTimeout(() => {
+      if (editingRef.current || document.visibilityState !== 'visible' || reloadStartedRef.current) return;
+      reloadStartedRef.current = true;
+      window.location.reload();
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [reloadPending, editing, visible]);
 
   async function install() {
     setInstallError('');
@@ -108,21 +142,8 @@ export default function PwaControls({online, editing, demo}) {
     }
   }
 
-  async function update() {
-    if (editing || !online) return;
-    setUpdateError('');
-    setUpdating(true);
-    try {
-      if (reloadPending) window.location.reload();
-      else await updateServiceWorker(true);
-    } catch {
-      setUpdating(false);
-      setUpdateError('No se pudo actualizar. Inténtalo de nuevo con conexión.');
-    }
-  }
-
   return <details className="pwa-panel" ref={detailsRef} aria-label={t('Instalación y disponibilidad de SafeRoute')}>
-    <summary className="pwa-summary"><strong>{t('Instalar y actualizar')}</strong><span className="pwa-brief">{t(needRefresh || reloadPending ? 'Nueva versión disponible' : online ? 'Con conexión' : 'Sin conexión')}</span></summary>
+    <summary className="pwa-summary"><strong>{t('Instalar y actualizar')}</strong><span className="pwa-brief">{t(reloadPending ? 'Nueva versión disponible' : online ? 'Con conexión' : 'Sin conexión')}</span></summary>
     <div className="pwa-body">
     <div className="pwa-summary">
       <div>
@@ -148,12 +169,10 @@ export default function PwaControls({online, editing, demo}) {
           : <p>{t('En Chrome o Edge, abre el menú ⋮ o ⋯ y elige Instalar SafeRoute o Añadir a pantalla de inicio. Si no aparece, usa un navegador compatible y visita la versión HTTPS.')}</p>}
       <button type="button" className="text" onClick={() => setShowHelp(false)}>{t('Cerrar instrucciones')}</button>
     </div>}
-    {(needRefresh || reloadPending) && <div className="pwa-update" role="status">
+    {reloadPending && <div className="pwa-update" role="status">
       <div><strong>{t('Hay una nueva versión de SafeRoute')}</strong>
-        <p>{t(editing ? 'Termina o cierra el formulario para actualizar sin perder lo que escribiste.' : !online ? 'Vuelve a conectarte para actualizar.' : 'Actualiza cuando quieras. La aplicación se volverá a abrir.')}</p>
-        {updateError && <p role="alert">{t(updateError)}</p>}
+        <p>{t(editing ? 'La actualización está lista. Se aplicará al terminar esta tarea o al recargar.' : 'Actualizando automáticamente…')}</p>
       </div>
-      <button type="button" className="primary" disabled={editing || !online || updating} onClick={update}>{t(updating ? 'Actualizando…' : 'Actualizar ahora')}</button>
     </div>}
     </div>
   </details>;
