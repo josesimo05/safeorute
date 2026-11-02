@@ -20,3 +20,29 @@ export async function submit(r){if(!cloud){const rows=localRows();rows.unshift({
 export function moderate(id,status){const rows=localRows().map(r=>r.id===id?{...r,status}:r);localStorage.setItem(key,JSON.stringify(rows));return rows;}
 export function reset(){localStorage.removeItem(key);return seed();}
 export async function analyze(description){if(!cloud)throw new Error('La API de IA requiere Firebase y una clave configurada en Vercel.');if(!auth.currentUser)await signInAnonymously(auth);const token=await auth.currentUser.getIdToken();const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({description})});if(!res.ok)throw new Error('No se pudo consultar la IA. Revisa la configuración o intenta luego.');return res.json();}
+
+export async function askSupport({message,language,signal}) {
+  const failure=(code,status)=>Object.assign(new Error(code),{code,status});
+  const abort=()=>{if(signal?.aborted)throw new DOMException('Aborted','AbortError');};
+  abort();
+  if(!cloud)throw failure('SUPPORT_NOT_CONFIGURED',503);
+  let token;
+  try {
+    if(!auth.currentUser)await signInAnonymously(auth);
+    token=await auth.currentUser.getIdToken();
+  }catch{abort();throw failure('SUPPORT_AUTH_UNAVAILABLE',401);}
+  abort();
+  let response;
+  try {
+    response=await fetch('/api/support',{method:'POST',signal,cache:'no-store',credentials:'omit',
+      headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({message,language})});
+  }catch{abort();throw failure('SUPPORT_NETWORK_ERROR');}
+  let body;
+  try{body=await response.json();}catch{throw failure('SUPPORT_UNAVAILABLE',response.status);}
+  if(!response.ok) {
+    const codes=['SUPPORT_NOT_CONFIGURED','SUPPORT_AUTH_REQUIRED','SUPPORT_RATE_LIMIT','SUPPORT_UNAVAILABLE','SUPPORT_INVALID_REQUEST'];
+    throw failure(codes.includes(body?.error)?body.error:'SUPPORT_UNAVAILABLE',response.status);
+  }
+  if(typeof body?.answer!=='string'||!Array.isArray(body.sourceIds)||typeof body.needsHuman!=='boolean')throw failure('SUPPORT_UNAVAILABLE',502);
+  return body;
+}

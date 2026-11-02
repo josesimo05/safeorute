@@ -97,3 +97,22 @@ test('ITS facts, uncertainty and stale-data labels are included offline in every
   assert.equal(translateText('Causa probable', 'en'), 'Probable cause');
   assert.equal(translateText('Causa no determinada.', 'en'), 'Cause undetermined.');
 });
+
+test('help and AI privacy controls are localized without changing question content', () => {
+  const labels = [
+    'Ayuda', 'Ayuda y soporte', 'Cerrar ayuda', 'Preguntas frecuentes', 'Asistente de ayuda',
+    'Borrar conversación', 'Fuentes de ayuda', 'Copiar consulta', 'Contactar soporte',
+    'Solo para dudas sobre SafeRoute. No atiende emergencias ni confirma incidentes.',
+    'Tu pregunta se envía al proveedor de IA. No se adjuntan automáticamente tus reportes, ubicación ni conversaciones anteriores.',
+    'El historial de esta ventana se borra al cerrar la ayuda.',
+    'La IA necesita conexión a Internet. Las preguntas frecuentes siguen disponibles.',
+  ];
+  for (const {code} of languages) {
+    for (const label of labels) assert.ok(Object.hasOwn(translations[code], label), `${code}: ${label}`);
+    assert.ok(translateText('{count} de 1200 caracteres', code, {count: '14'}).includes('14'));
+    assert.equal(translateText('Mi pregunta personal sobre el funcionamiento de la aplicación.', code),
+      'Mi pregunta personal sobre el funcionamiento de la aplicación.');
+  }
+  assert.equal(translateText('Ayuda y soporte', 'en'), 'Help and support');
+  assert.equal(translateText('Sin respuesta de IA.', 'en'), 'No AI response.');
+});

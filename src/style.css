@@ -253,6 +253,9 @@ html[data-theme="dark"] .route-line-active{stroke:#a3efbe}
 .preferences-dialog select{width:100%;min-height:46px;font-size:16px}
 .preferences-account{display:flex;gap:8px;margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
 @media(max-width:840px){nav button{white-space:normal;overflow-wrap:anywhere;line-height:1.15;font-size:11px}}
+.support-launcher{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:max(20px,env(safe-area-inset-bottom,0px));z-index:1300;display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:9px 15px;border:1px solid var(--line);border-radius:30px;background:var(--surface);color:var(--ink);box-shadow:var(--shadow);font-size:12px;font-weight:800}
+.support-launcher>span{display:grid;place-items:center;inline-size:25px;block-size:25px;border-radius:50%;background:var(--accent);color:#143b2b;font-size:17px}
+@media(max-width:840px){.support-launcher{right:max(12px,env(safe-area-inset-right,0px));bottom:calc(80px + env(safe-area-inset-bottom,0px));min-height:46px;padding:8px 12px}}
 .preferences-account button{min-height:44px}
 html[dir="rtl"] .map{direction:ltr}
 html[dir="rtl"] .brandicon{margin-right:0;margin-left:10px}

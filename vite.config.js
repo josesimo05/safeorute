@@ -2,10 +2,12 @@ import {defineConfig} from 'vite';
 import react from '@vitejs/plugin-react';
 import {VitePWA} from 'vite-plugin-pwa';
 import {itsViteProxy} from './api/its.js';
+import {supportViteProxy} from './api/support.js';
 
 export default defineConfig({
   plugins: [
     itsViteProxy(),
+    supportViteProxy(),
     react(),
     VitePWA({
       // Registration and update confirmation live in the React interface.

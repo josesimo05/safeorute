@@ -4,13 +4,14 @@ import PwaControls from './PwaControls';
 import PlaceSearch from './PlaceSearch';
 import NavigationSession from './NavigationSession';
 import ItsPanel from './ItsPanel';
+import SupportHelp from './SupportHelp';
 import './its.css';
 import { useI18n } from './LocaleContext';
 import { languages } from './i18n';
 import { countryOptions, normalizeCountry, countryMapView } from './regions';
 import { firebaseErrorMessage } from './firebase-errors';
 import { categories, colors, classify, duplicate, validate, period, routeReportCount, reportLevel } from './logic';
-import { cloud, watch, watchUser, submit, moderate, reset, analyze, register, login, logout } from './store';
+import { cloud, watch, watchUser, submit, moderate, reset, analyze, register, login, logout, askSupport } from './store';
 import { hasRouting, getRoutes, nearbyPlaces, similarRoutes, tileUrl, mapProvider, mapAttribution } from './navigation';
 const poiFilters = ['Gasolineras', 'Farmacias', 'Supermercados', 'Hospitales'];
 function localDay(value) {
@@ -43,6 +44,7 @@ export default function App() {
   } = useI18n();
   const [country, setCountry] = useState(initialCountry),
     [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const countries = useMemo(() => countryOptions(language), [language]);
   const locale = country === 'all' ? language : `${language}-${country.toUpperCase()}`;
   const routeRequest = useRef(0);
@@ -764,7 +766,7 @@ export default function App() {
           setPoint(null);
         }}>{tr("＋ Reportar")}</button></div></header>
  <main className={`${tab === 'Navegar' ? 'is-planning' : ''} ${!panelExpanded || picking ? 'map-focused' : ''}`}><div className="intro"><div><span className="eyebrow">{tr("INFORMACIÓN QUE NOS CONECTA")}</span><h1>{tr("Tu ciudad, con más contexto.")}</h1><p>{tr("Explora lo que comparte la comunidad. Decide cómo moverte.")}</p><div className="hero-tags"><span>{tr("⌖ Reportes comunitarios")}</span><span>{tr("✦ Rutas con contexto")}</span><span>{tr("◉ Diseñado para móvil")}</span></div></div><div className="mode"><i className={online ? 'dot' : 'dot off'} />{cloud ? tr('Comunidad · Firebase') : tr('Demostración · Datos simulados')}<small>{online ? tr('Con conexión') : tr('Sin conexión')}</small></div></div>
- <PwaControls online={online} editing={form || account || busy || picking || routeBusy || guiding} demo={!cloud} />
+ <PwaControls online={online} editing={supportOpen || form || account || busy || picking || routeBusy || guiding} demo={!cloud} />
  <section className={`workspace ${tab === 'Navegar' ? 'navigation-workspace' : ''} ${panelExpanded ? 'panel-expanded' : 'panel-collapsed'} ${picking ? 'is-picking' : ''} ${searchActive ? 'is-searching' : ''}`}><aside><button type="button" className="panel-toggle" aria-label={panelExpanded && !picking ? tr('Ver mapa completo') : tab === 'Navegar' ? tr('Mostrar planificador') : tab === 'Tráfico ITS' ? tr('Mostrar tráfico ITS') : tr('Mostrar reportes')} aria-controls="workspace-panel" aria-expanded={panelExpanded && !picking} onClick={() => {
             setSearchActive(null);
             setPanelExpanded(v => picking ? true : !v);
@@ -832,6 +834,8 @@ export default function App() {
   map.current?.fitBounds(activeRoute.points.map(p=>[p.latitude,p.longitude]), {paddingTopLeft:[30,Math.min(200,height*.27)],paddingBottomRight:[30,Math.min(250,height*.34)],maxZoom:16});
 }} recalculating={routeBusy} />}</div></section>
  <footer><p>{tr("Los reportes comunitarios no están verificados. SafeRoute no determina si una zona es segura. Conduce y reporta sólo cuando el vehículo esté detenido.")}</p><span>JMMM × Actuana Academy · INTEC STEM</span></footer></main>
+ {!guiding && !routePicking && <button type="button" className="support-launcher" aria-label={tr('Ayuda y soporte')} title={tr('Ayuda y soporte')} aria-haspopup="dialog" aria-expanded={supportOpen} onClick={() => {setForm(false);setAccount(false);setPreferencesOpen(false);setSupportOpen(true);}}><span aria-hidden="true">?</span>{tr('Ayuda')}</button>}
+ <SupportHelp open={supportOpen} onClose={() => setSupportOpen(false)} askAssistant={askSupport} />
  {message && <div className="toast" role="status">{tr(message)}<button aria-label={tr("Cerrar aviso")} onClick={() => setMessage('')}>×</button></div>}
  {form && <div className="overlay"><section role="dialog" aria-modal="true" aria-labelledby="report-title" className="dialog"><button className="close" aria-label={tr("Cerrar formulario")} onClick={() => setForm(false)}>×</button><span className="eyebrow">{tr("TU APORTE CUENTA")}</span><h2 id="report-title">{tr("Registra un incidente")}</h2><p>{tr("No incluyas nombres, rostros, teléfonos ni otros datos personales.")}</p><form onSubmit={send}><div className="quick-label">{tr("Reporte rápido")}<small>{tr("elige el tipo y marca el lugar")}</small></div><div className="quick-choices">{categories.map((c, i) => <button type="button" key={c} className={category === c ? 'quick-selected' : ''} onClick={() => quickReport(c)}><i style={{
                 background: colors[i]

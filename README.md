@@ -10,6 +10,8 @@ La pestaña **Tráfico ITS** vincula SafeRoute con `https://safeorute-its-demo.o
 
 El panel actualiza cada ocho segundos mientras está visible y hay conexión, muestra velocidad, aforo, salud y alertas y retira métricas vencidas a los quince segundos. Los datos actuales son **sintéticos** y la ubicación de cámara es ilustrativa: se muestran en una capa propia, se filtran por país y se centran solo al pulsar **Ver cámara en el mapa**. No alteran las rutas, sus tiempos ni los reportes comunitarios. El alojamiento puede necesitar tiempo de arranque; la app reintenta y no interpreta una falta de datos como tráfico detenido. Las mediciones ITS requieren Internet y no se guardan en la caché offline de la PWA.
 
+**Ayuda** ofrece preguntas frecuentes en ocho idiomas sin conexión y un chat de IA opcional con contexto limitado a esa guía. Las cuotas predeterminadas son 10 consultas por usuario/día, 50 globales/día y 1000/mes. No hay un correo de soporte asignado; copiar la consulta no la envía. La [guía de soporte y cambio de dirección](docs/AYUDA_Y_DOMINIO.md) explica la configuración de IA y el cambio pendiente del hostname a un nombre con `saferoute`; no se da por asignado un dominio nuevo desde el código.
+
 ## 1. Abrir en Antigravity
 
 Descomprime esta carpeta y ábrela como proyecto. Instala Node.js LTS compatible con Vite (22.12 o posterior; probado aquí con Node 24). En la terminal de la carpeta:
