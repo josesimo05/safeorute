@@ -1,7 +1,7 @@
 import {getApp, initializeApp, cert} from 'firebase-admin/app';
 import {getAuth} from 'firebase-admin/auth';
 import {getSupportArticles} from '../src/support-content.js';
-import {reserveSupportBudget} from './support-budget.js';
+import {reserveSupportBudget} from '../server/support-budget.js';
 
 const LANGUAGES = new Set(['es', 'en', 'fr', 'pt', 'de', 'it', 'ar', 'zh']);
 const MAX_BODY_BYTES = 8192;

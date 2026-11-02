@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {deleteApp, initializeApp} from 'firebase-admin/app';
 import {getFirestore, Timestamp} from 'firebase-admin/firestore';
-import {createBudgetLimiter, reserveSupportBudget} from '../api/support-budget.js';
+import {createBudgetLimiter, reserveSupportBudget} from '../server/support-budget.js';
 
 // Serializable, atomic test double for the Firestore transaction contract. It
 // does not emulate the Firestore service or require a real Firebase account.
