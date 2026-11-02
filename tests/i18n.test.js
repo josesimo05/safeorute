@@ -80,3 +80,20 @@ test('core controls and detailed error messages are available in every pack', ()
     }
   }
 });
+
+test('ITS facts, uncertainty and stale-data labels are included offline in every language', () => {
+  const labels = [
+    'Tráfico ITS', 'Datos de tráfico ITS', 'Demostración · datos sintéticos',
+    'Observado', 'Causa probable', 'Causa no determinada.', 'Confianza',
+    'Observación vencida. La falta de datos no significa tráfico detenido.',
+    'Captura UTC desconocida', 'Ver cámara en el mapa',
+    'Velocidad observada: {speed} km/h', 'Recibido hace {seconds} s',
+  ];
+  for (const {code} of languages) {
+    for (const label of labels) assert.ok(Object.hasOwn(translations[code], label), `${code}: ${label}`);
+    assert.ok(translateText('Velocidad observada: {speed} km/h', code, {speed: '8.0'}).includes('8.0'));
+    assert.ok(translateText('Recibido hace {seconds} s', code, {seconds: '16'}).includes('16'));
+  }
+  assert.equal(translateText('Causa probable', 'en'), 'Probable cause');
+  assert.equal(translateText('Causa no determinada.', 'en'), 'Cause undetermined.');
+});

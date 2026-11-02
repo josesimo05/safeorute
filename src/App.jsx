@@ -3,6 +3,8 @@ import L from 'leaflet';
 import PwaControls from './PwaControls';
 import PlaceSearch from './PlaceSearch';
 import NavigationSession from './NavigationSession';
+import ItsPanel from './ItsPanel';
+import './its.css';
 import { useI18n } from './LocaleContext';
 import { languages } from './i18n';
 import { countryOptions, normalizeCountry, countryMapView } from './regions';
@@ -89,6 +91,7 @@ export default function App() {
   const [followPosition, setFollowPosition] = useState(true);
   const [navigationPosition, setNavigationPosition] = useState(null);
   const [mapCenter, setMapCenter] = useState(() => countryMapView(country).center);
+  const [itsCameras, setItsCameras] = useState([]);
   const guidanceRef = useRef(false);
   guidanceRef.current = guiding;
   const mapNode = useRef(),
@@ -99,6 +102,7 @@ export default function App() {
     poiLayer = useRef(),
     pointLayer = useRef(),
     userLayer = useRef(),
+    itsLayer = useRef(),
     tiles = useRef(),
     clickMode = useRef('report'),
     pickMode = useRef(null);
@@ -154,6 +158,7 @@ export default function App() {
     poiLayer.current = L.layerGroup().addTo(m);
     pointLayer.current = L.layerGroup().addTo(m);
     userLayer.current = L.layerGroup().addTo(m);
+    itsLayer.current = L.layerGroup().addTo(m);
     m.on('moveend', () => {
       const c = m.getCenter().wrap();
       setMapCenter([c.lat, c.lng]);
@@ -195,6 +200,37 @@ export default function App() {
     map.current?.setView(view.center, view.zoom, {animate:false});
     setMapCenter(view.center);
   }, [country]);
+  const itsMarkerSignature = JSON.stringify(itsCameras.map(({id, location, stale, speedKmh}) =>
+    ({id, location, stale, speedKmh})));
+  useEffect(() => {
+    if (!itsLayer.current) return;
+    itsLayer.current.clearLayers();
+    if (tab !== 'Tráfico ITS') return;
+    for (const camera of itsCameras) {
+      const location = camera.location;
+      if (!Number.isFinite(location?.latitude) || !Number.isFinite(location?.longitude)) continue;
+      const popup = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = `${tr('Cámara ITS')} · ${camera.id}`;
+      const label = document.createElement('p');
+      label.textContent = tr('Demostración · ubicación ilustrativa');
+      const measurement = document.createElement('p');
+      measurement.textContent = camera.stale ? tr('Medición no disponible') :
+        !Number.isFinite(camera.speedKmh) ? tr('Velocidad no disponible') : `${new Intl.NumberFormat(language).format(camera.speedKmh)} km/h`;
+      popup.append(title, label, measurement);
+      L.circleMarker([location.latitude, location.longitude], {
+        radius:10, weight:3, color:'#fff', fillColor:camera.stale ? '#718078' : '#a76b13', fillOpacity:.95
+      }).bindPopup(popup).bindTooltip(tr('Cámara ITS · demostración')).addTo(itsLayer.current);
+    }
+  }, [itsMarkerSignature, tab, language]);
+  useEffect(() => {
+    if (!map.current) return;
+    for (const layer of [routeLayer.current, endpointLayer.current, poiLayer.current, pointLayer.current]) {
+      if (!layer) continue;
+      if (tab === 'Tráfico ITS') map.current.removeLayer(layer);
+      else if (!map.current.hasLayer(layer)) layer.addTo(map.current);
+    }
+  }, [tab]);
   useEffect(() => {
     if (!userLayer.current) return;
     userLayer.current.clearLayers();
@@ -253,6 +289,7 @@ export default function App() {
   useEffect(() => {
     if (!markers.current) return;
     markers.current.clearLayers();
+    if (tab === 'Tráfico ITS') return;
     visible.forEach(r => {
       const color = colors[categories.indexOf(r.category)] || colors[5],
         icon = categories[categories.indexOf(r.category)] === 'Poca iluminación' ? '☼' : categories[categories.indexOf(r.category)] === 'Bache' ? '⌁' : '!';
@@ -273,14 +310,14 @@ export default function App() {
         bubblingMouseEvents: false
       }).bindPopup(popup).addTo(markers.current);
     });
-  }, [rows, cat, time, since, search, language]);
+  }, [rows, cat, time, since, search, language, tab]);
   useEffect(() => {
     clickMode.current = tab === 'Explorar' ? 'report' : 'ignore';
     const frame = requestAnimationFrame(() => {
       map.current?.invalidateSize({
         pan: true, animate: false
       });
-      if (!picking && !guiding && activeRoute?.points.length) map.current?.fitBounds(activeRoute.points.map(p => [p.latitude, p.longitude]), {
+      if (tab !== 'Tráfico ITS' && !picking && !guiding && activeRoute?.points.length) map.current?.fitBounds(activeRoute.points.map(p => [p.latitude, p.longitude]), {
         padding: [40, 40],
         maxZoom: 15
       });
@@ -311,7 +348,7 @@ export default function App() {
         }).addTo(routeLayer.current);
       }
     });
-    if (!guiding && activeRoute?.points.length) {
+    if (tab !== 'Tráfico ITS' && !guiding && activeRoute?.points.length) {
       const bounds = L.latLngBounds(activeRoute.points.map(p => [p.latitude, p.longitude]));
       map.current?.fitBounds(bounds, {
         padding: [55, 55],
@@ -332,7 +369,7 @@ export default function App() {
         })
       }).addTo(endpointLayer.current);
     }
-    if (origin && destination && !routes.length) map.current?.fitBounds([[origin.lat, origin.lon], [destination.lat, destination.lon]], {
+    if (tab !== 'Tráfico ITS' && origin && destination && !routes.length) map.current?.fitBounds([[origin.lat, origin.lon], [destination.lat, destination.lon]], {
       padding: [45, 45],
       maxZoom: 15
     });
@@ -706,7 +743,13 @@ export default function App() {
   const mapLegend = <div className="legend">{categories.map((c, i) => <span key={c}><i className="legend-dot" style={{
         background: colors[i]
       }} />{tr(c)}</span>)}<span><i>⛽</i>{tr("Gasolinera")}</span><span><i>✚</i>{tr("Farmacia")}</span><span><i>🛒</i>{tr("Supermercado")}</span><span><i>🏥</i>{tr("Hospital")}</span><span><i className="legend-route" />{tr("Ruta elegida")}</span><span><i className="legend-start">{tr("A")}</i>{tr("Origen")}</span><span><i className="legend-end">{tr("B")}</i>{tr("Destino")}</span></div>;
-  return <div className={`app-shell ${routePicking ? `route-picking route-picking-${pickMode.current}` : ''} ${guiding ? 'guidance-mode' : ''}`}><header><a className="brand" href="/" aria-label={tr("SafeRoute inicio")}><span className="brandicon">↗</span>SafeRoute<span className="branddot">.</span></a><nav aria-label={tr("Secciones")}>{['Explorar', 'Patrones', 'Navegar', ...(!cloud ? ['Moderación'] : [])].map(t => <button className={tab === t ? 'active' : ''} key={t} onClick={() => {
+  return <div className={`app-shell ${routePicking ? `route-picking route-picking-${pickMode.current}` : ''} ${guiding ? 'guidance-mode' : ''}`}><header><a className="brand" href="/" aria-label={tr("SafeRoute inicio")}><span className="brandicon">↗</span>SafeRoute<span className="branddot">.</span></a><nav aria-label={tr("Secciones")}>{['Explorar', 'Patrones', 'Navegar', 'Tráfico ITS', ...(!cloud ? ['Moderación'] : [])].map(t => <button className={tab === t ? 'active' : ''} key={t} onClick={() => {
+          if (t === 'Tráfico ITS') {
+            routeRequest.current++;
+            locationRequests.current.origin++;
+            locationRequests.current.destination++;
+            setRouteBusy(false);
+          }
           setTab(t);
           setSearchActive(null);
           setPanelExpanded(true);
@@ -722,12 +765,12 @@ export default function App() {
         }}>{tr("＋ Reportar")}</button></div></header>
  <main className={`${tab === 'Navegar' ? 'is-planning' : ''} ${!panelExpanded || picking ? 'map-focused' : ''}`}><div className="intro"><div><span className="eyebrow">{tr("INFORMACIÓN QUE NOS CONECTA")}</span><h1>{tr("Tu ciudad, con más contexto.")}</h1><p>{tr("Explora lo que comparte la comunidad. Decide cómo moverte.")}</p><div className="hero-tags"><span>{tr("⌖ Reportes comunitarios")}</span><span>{tr("✦ Rutas con contexto")}</span><span>{tr("◉ Diseñado para móvil")}</span></div></div><div className="mode"><i className={online ? 'dot' : 'dot off'} />{cloud ? tr('Comunidad · Firebase') : tr('Demostración · Datos simulados')}<small>{online ? tr('Con conexión') : tr('Sin conexión')}</small></div></div>
  <PwaControls online={online} editing={form || account || busy || picking || routeBusy || guiding} demo={!cloud} />
- <section className={`workspace ${tab === 'Navegar' ? 'navigation-workspace' : ''} ${panelExpanded ? 'panel-expanded' : 'panel-collapsed'} ${picking ? 'is-picking' : ''} ${searchActive ? 'is-searching' : ''}`}><aside><button type="button" className="panel-toggle" aria-label={panelExpanded && !picking ? tr('Ver mapa completo') : tab === 'Navegar' ? tr('Mostrar planificador') : tr('Mostrar reportes')} aria-controls="workspace-panel" aria-expanded={panelExpanded && !picking} onClick={() => {
+ <section className={`workspace ${tab === 'Navegar' ? 'navigation-workspace' : ''} ${panelExpanded ? 'panel-expanded' : 'panel-collapsed'} ${picking ? 'is-picking' : ''} ${searchActive ? 'is-searching' : ''}`}><aside><button type="button" className="panel-toggle" aria-label={panelExpanded && !picking ? tr('Ver mapa completo') : tab === 'Navegar' ? tr('Mostrar planificador') : tab === 'Tráfico ITS' ? tr('Mostrar tráfico ITS') : tr('Mostrar reportes')} aria-controls="workspace-panel" aria-expanded={panelExpanded && !picking} onClick={() => {
             setSearchActive(null);
             setPanelExpanded(v => picking ? true : !v);
             setPicking(false);
             pickMode.current = null;
-          }}><span>{panelExpanded && !picking ? tr('Ver mapa completo') : tab === 'Navegar' ? tr('Mostrar planificador') : tr('Mostrar reportes')}</span></button><div className="panel-content" id="workspace-panel"><div className="aside-title"><span>{tab === 'Explorar' ? tr('Explora los reportes') : tab === 'Patrones' ? tr('Observa los patrones') : tab === 'Navegar' ? tr('Navega con contexto') : tr('Revisión de prueba')}</span><small>{country === "all" ? tr("Todos los países") : countries.find(item=>item.code===country)?.name}</small></div>
+          }}><span>{panelExpanded && !picking ? tr('Ver mapa completo') : tab === 'Navegar' ? tr('Mostrar planificador') : tab === 'Tráfico ITS' ? tr('Mostrar tráfico ITS') : tr('Mostrar reportes')}</span></button><div className="panel-content" id="workspace-panel"><div className="aside-title"><span>{tab === 'Explorar' ? tr('Explora los reportes') : tab === 'Patrones' ? tr('Observa los patrones') : tab === 'Navegar' ? tr('Navega con contexto') : tab === 'Tráfico ITS' ? tr('Cámaras de tráfico ITS') : tr('Revisión de prueba')}</span><small>{country === "all" ? tr("Todos los países") : countries.find(item=>item.code===country)?.name}</small></div>
  {tab === 'Navegar' && <div className="navigator"><div className="nav-note">{tr("Rutas estimadas con Geoapify y reportes comunitarios aprobados. Sin tráfico en tiempo real.")}</div><label className="planner-country" htmlFor="planner-country">{tr('País de búsqueda')}<select id="planner-country" value={country} onChange={e=>changeCountry(e.target.value)}><option value="all">{tr('Todos los países')}</option>{countries.map(item=><option key={item.code} value={item.code}>{item.name}</option>)}</select></label>{!hasRouting && <div className="setup-note">{tr("Configura Geoapify para buscar direcciones, calcular rutas y encontrar servicios cercanos. La guía del proyecto explica cómo conectar tu clave.")}</div>}<form onSubmit={calculateRoutes}>
  <PlaceSearch id="origin" label="Origen" value={origin?.source === "map" ? tr("Punto seleccionado en el mapa") : origin?.source === "location" ? tr("Mi ubicación") : originText} selected={Boolean(origin)} country={country} bias={searchBias} onChange={text => editPlace('origin', text)} onSelect={result => chooseAddress('origin', result)} onUseLocation={() => useMyPosition('origin')} onFocusChange={active => setSearchActive(active ? 'origin' : null)} onPickOnMap={() => pickOnMap('origin')} />
  <PlaceSearch id="destination" label="Destino" value={destination?.source === "map" ? tr("Punto seleccionado en el mapa") : destination?.source === "location" ? tr("Mi ubicación") : destText} selected={Boolean(destination)} country={country} bias={searchBias} onChange={text => editPlace('destination', text)} onSelect={result => chooseAddress('destination', result)} onUseLocation={() => useMyPosition('destination')} onFocusChange={active => setSearchActive(active ? 'destination' : null)} onPickOnMap={() => pickOnMap('destination')} />
@@ -752,7 +795,12 @@ export default function App() {
                         })}</span></button>;
                   })}</div><button className="primary wide start-navigation" disabled={routeBusy} onClick={startNavigation}>{tr('Iniciar navegación')}</button><p className="tiny">{tr('La ruta seleccionada se mantiene dentro de SafeRoute.')}</p><details className="route-directions"><summary>{tr('Indicaciones de la ruta')}</summary><button onClick={speakRoute}>{tr('🔊 Escuchar resumen')}</button><ol>{activeRoute?.instructions.map((step,index)=><li key={index} dir="auto">{step.text}</li>)}</ol></details></>}
  </div>}
- {tab !== 'Navegar' && <><label>{tr("Buscar en los reportes")}<input placeholder={tr("Ej. luminaria, avenida…")} value={search} onChange={e => setSearch(e.target.value)} /></label><div className="filters"><label>{tr("Categoría")}<select value={cat} onChange={e => setCat(e.target.value)}><option value="Todas">{tr("Todas")}</option>{categories.map(c => <option key={c} value={c}>{tr(c)}</option>)}</select></label><label>{tr("Horario")}<select value={time} onChange={e => setTime(e.target.value)}>{['Todas', 'Madrugada', 'Mañana', 'Tarde', 'Noche'].map(t => <option key={t} value={t}>{tr(t)}</option>)}</select></label></div><label>{tr("Desde la fecha")}<input type="date" value={since} onChange={e => setSince(e.target.value)} /></label><button className="text" onClick={() => {
+ <ItsPanel active={tab === 'Tráfico ITS'} country={country} onCamerasChange={setItsCameras} onFocusCamera={camera => {
+   if (!Number.isFinite(camera.location?.latitude) || !Number.isFinite(camera.location?.longitude)) return;
+   map.current?.setView([camera.location.latitude,camera.location.longitude],16,{animate:false});
+   if (window.matchMedia('(max-width: 840px)').matches) setPanelExpanded(false);
+ }} />
+ {tab !== 'Navegar' && tab !== 'Tráfico ITS' && <><label>{tr("Buscar en los reportes")}<input placeholder={tr("Ej. luminaria, avenida…")} value={search} onChange={e => setSearch(e.target.value)} /></label><div className="filters"><label>{tr("Categoría")}<select value={cat} onChange={e => setCat(e.target.value)}><option value="Todas">{tr("Todas")}</option>{categories.map(c => <option key={c} value={c}>{tr(c)}</option>)}</select></label><label>{tr("Horario")}<select value={time} onChange={e => setTime(e.target.value)}>{['Todas', 'Madrugada', 'Mañana', 'Tarde', 'Noche'].map(t => <option key={t} value={t}>{tr(t)}</option>)}</select></label></div><label>{tr("Desde la fecha")}<input type="date" value={since} onChange={e => setSince(e.target.value)} /></label><button className="text" onClick={() => {
                 setSearch('');
                 setCat('Todas');
                 setTime('Todas');
@@ -778,7 +826,7 @@ export default function App() {
                 }}>{tr("Restaurar demostración")}</button></div>}</>}
  </div></aside><div className="map-wrap"><div ref={mapNode} className="map" aria-label={tr("Mapa de reportes comunitarios y rutas")} /><div className="map-label">{picking ? tr('Toca el mapa para elegir {place}', {
               place: tr(pickMode.current === 'origin' ? 'el origen' : 'el destino')
-            }) : tab === 'Navegar' ? tr('Origen A · Destino B') : tr('Toca para reportar')}</div>{(!online || offlineMap) && <div className="map-offline" role="status"><span>{online ? tr('No se pudo cargar parte del mapa. Puedes reintentarlo.') : tr('El mapa necesita conexión a internet.')}{!cloud && tr(' Tus reportes locales siguen disponibles.')}</span><button type="button" disabled={!online} onClick={() => tiles.current?.redraw()}>{tr("Reintentar mapa")}</button></div>}{tab !== 'Navegar' && <button className="locate" onClick={locateReport}>{tr("◎ Mi ubicación")}</button>}<details className="map-legend-control"><summary>{tr("Leyenda")}</summary>{mapLegend}</details>{routePicking && <><div className="picker-crosshair" aria-hidden="true"><span>{pickMode.current === 'origin' ? 'A' : 'B'}</span></div><section className="map-picker" aria-label={tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}><div className="picker-heading"><strong>{tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}</strong><button type="button" onClick={cancelMapPick}>{tr('Cancelar selección')}</button></div><div className="picker-confirm"><p>{tr('Arrastra el mapa y coloca el punto bajo la mira.')}{pickerPoint && <small dir="ltr">{pickerPoint.lat.toFixed(5)}, {pickerPoint.lon.toFixed(5)}</small>}</p><button type="button" className="primary" onClick={confirmMapPick}>{tr(pickMode.current === 'origin' ? 'Confirmar origen' : 'Confirmar destino')}</button></div></section></>}{guiding && activeRoute && <NavigationSession route={activeRoute} onPosition={setNavigationPosition} onStop={stopNavigation} onRecalculate={recalculateNavigation} follow={followPosition} onFollowChange={setFollowPosition} onOverview={() => {
+            }) : tab === 'Navegar' ? tr('Origen A · Destino B') : tab === 'Tráfico ITS' ? tr('Cámaras ITS · ubicaciones de prueba') : tr('Toca para reportar')}</div>{(!online || offlineMap) && <div className="map-offline" role="status"><span>{online ? tr('No se pudo cargar parte del mapa. Puedes reintentarlo.') : tr('El mapa necesita conexión a internet.')}{!cloud && tr(' Tus reportes locales siguen disponibles.')}</span><button type="button" disabled={!online} onClick={() => tiles.current?.redraw()}>{tr("Reintentar mapa")}</button></div>}{tab !== 'Navegar' && tab !== 'Tráfico ITS' && <button className="locate" onClick={locateReport}>{tr("◎ Mi ubicación")}</button>}<details className="map-legend-control"><summary>{tr("Leyenda")}</summary>{tab === 'Tráfico ITS' ? <div className="legend"><span><i className="legend-dot" style={{background:'#a76b13'}} />{tr('Cámara ITS · demostración')}</span></div> : mapLegend}</details>{routePicking && <><div className="picker-crosshair" aria-hidden="true"><span>{pickMode.current === 'origin' ? 'A' : 'B'}</span></div><section className="map-picker" aria-label={tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}><div className="picker-heading"><strong>{tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}</strong><button type="button" onClick={cancelMapPick}>{tr('Cancelar selección')}</button></div><div className="picker-confirm"><p>{tr('Arrastra el mapa y coloca el punto bajo la mira.')}{pickerPoint && <small dir="ltr">{pickerPoint.lat.toFixed(5)}, {pickerPoint.lon.toFixed(5)}</small>}</p><button type="button" className="primary" onClick={confirmMapPick}>{tr(pickMode.current === 'origin' ? 'Confirmar origen' : 'Confirmar destino')}</button></div></section></>}{guiding && activeRoute && <NavigationSession route={activeRoute} onPosition={setNavigationPosition} onStop={stopNavigation} onRecalculate={recalculateNavigation} follow={followPosition} onFollowChange={setFollowPosition} onOverview={() => {
   setFollowPosition(false);
   const height=map.current?.getSize().y || 800;
   map.current?.fitBounds(activeRoute.points.map(p=>[p.latitude,p.longitude]), {paddingTopLeft:[30,Math.min(200,height*.27)],paddingBottomRight:[30,Math.min(250,height*.34)],maxZoom:16});

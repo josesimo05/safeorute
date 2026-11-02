@@ -4,7 +4,11 @@ Prototipo para Colegio Jaime Molina Mota × Actuana Academy, Feria INTEC STEM. R
 
 El [MVP ITS de una cámara](traffic-its/README.md) incluye un servicio Python, API REST/WebSocket y dashboard separado. Empieza con una demostración sintética identificada; las fuentes reales requieren video autorizado y calibración antes de medir velocidad métrica.
 
-Para probar el ITS desde Internet, está preparado el [despliegue público de la demo](traffic-its/deployment/PUBLICAR_DEMO.md): un servicio de lectura con datos sintéticos y escenario de congestión. El enlace de despliegue requiere crear el servicio en una cuenta de alojamiento; no es una demo ya publicada.
+Para reproducir el ITS desde Internet, consulta la [guía de despliegue público de la demo](traffic-its/deployment/PUBLICAR_DEMO.md): un servicio de lectura con datos sintéticos y escenario de congestión. El enlace Deploy crea otra instancia en una cuenta de alojamiento; la app ya tiene configurada la dirección del servicio indicado abajo.
+
+La pestaña **Tráfico ITS** vincula SafeRoute con `https://safeorute-its-demo.onrender.com`. El navegador consulta `/api/its` en la propia app; la función de Vercel obtiene el snapshot de Render sin reenviar cookies ni credenciales de Firebase. Vite ofrece la misma ruta en desarrollo y preview. No hace falta una clave adicional ni modificar CORS en el servicio de Render. `ITS_BACKEND_URL` es una opción del servidor para sustituir el origen; por defecto ya usa la dirección indicada.
+
+El panel actualiza cada ocho segundos mientras está visible y hay conexión, muestra velocidad, aforo, salud y alertas y retira métricas vencidas a los quince segundos. Los datos actuales son **sintéticos** y la ubicación de cámara es ilustrativa: se muestran en una capa propia, se filtran por país y se centran solo al pulsar **Ver cámara en el mapa**. No alteran las rutas, sus tiempos ni los reportes comunitarios. El alojamiento puede necesitar tiempo de arranque; la app reintenta y no interpreta una falta de datos como tráfico detenido. Las mediciones ITS requieren Internet y no se guardan en la caché offline de la PWA.
 
 ## 1. Abrir en Antigravity
 

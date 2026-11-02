@@ -252,6 +252,7 @@ html[data-theme="dark"] .route-line-active{stroke:#a3efbe}
 .preferences-dialog{max-width:460px}
 .preferences-dialog select{width:100%;min-height:46px;font-size:16px}
 .preferences-account{display:flex;gap:8px;margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
+@media(max-width:840px){nav button{white-space:normal;overflow-wrap:anywhere;line-height:1.15;font-size:11px}}
 .preferences-account button{min-height:44px}
 html[dir="rtl"] .map{direction:ltr}
 html[dir="rtl"] .brandicon{margin-right:0;margin-left:10px}
