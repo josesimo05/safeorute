@@ -2,6 +2,13 @@ rules_version = '2';
 service cloud.firestore {
  match /databases/{database}/documents {
   function signedIn() { return request.auth != null; }
+  // The opt-in pilot requires guest submissions through the private server API.
+  // Its Admin SDK writes bypass client rules; no identity enters public reports.
+  function allowedDirectReporter() {
+   return signedIn() && (request.auth.token.firebase.sign_in_provider != 'anonymous'
+    || !exists(/databases/$(database)/documents/systemPolicies/reporting)
+    || get(/databases/$(database)/documents/systemPolicies/reporting).data.requireGuestIdentity != true);
+  }
   function validReport(d) {
    return d.keys().hasOnly(['category','description','lat','lng','occurredAt','status','source','createdAt'])
     && d.keys().hasAll(['category','description','lat','lng','occurredAt','status','source','createdAt'])
@@ -14,7 +21,7 @@ service cloud.firestore {
   }
   match /reports/{id} {
    allow read: if resource.data.status == 'approved';
-   allow create: if signedIn() && validReport(request.resource.data)
+   allow create: if allowedDirectReporter() && validReport(request.resource.data)
     && getAfter(/databases/$(database)/documents/submissionLimits/$(request.auth.uid)).data.lastReport == id
     && getAfter(/databases/$(database)/documents/submissionLimits/$(request.auth.uid)).data.at == request.time;
    allow update, delete: if false;

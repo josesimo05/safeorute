@@ -23,6 +23,12 @@ export function firebaseErrorMessage(error, {guest = false, fallback = 'No se pu
       return 'El correo o la contraseña no son correctos. Revisa tus datos.';
     case 'auth/too-many-requests':
       return 'Hay demasiados intentos. Espera unos minutos y vuelve a intentarlo.';
+    case 'REPORTS_RATE_LIMIT':
+      return 'Has alcanzado el límite temporal de reportes. Inténtalo más tarde.';
+    case 'REPORTS_NOT_CONFIGURED':
+      return 'No pudimos comprobar el envío con cédula. Reintenta antes de enviar.';
+    case 'REPORTS_AUTH_REQUIRED':
+    case 'REPORTS_UNAVAILABLE':
     case 'auth/network-request-failed':
     case 'unavailable':
     case 'firestore/unavailable':

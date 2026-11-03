@@ -363,3 +363,5 @@ body.immersive-map{overflow:hidden;padding:0}
  .guidance-metrics dd{font-size:19px}
  .guidance-panel .guidance-background{display:none}
 }
+.guest-identity-fields,.guest-identity-status{margin:16px 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft)}
+.guest-identity-fields p{margin-bottom:0}.report-dialog .primary.wide{margin-top:16px}

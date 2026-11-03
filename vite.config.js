@@ -3,11 +3,13 @@ import react from '@vitejs/plugin-react';
 import {VitePWA} from 'vite-plugin-pwa';
 import {itsViteProxy} from './api/its.js';
 import {supportViteProxy} from './api/support.js';
+import {reportsViteProxy} from './api/reports.js';
 
 export default defineConfig({
   plugins: [
     itsViteProxy(),
     supportViteProxy(),
+    reportsViteProxy(),
     react(),
     VitePWA({
       // Activate completed releases automatically. React defers the page reload

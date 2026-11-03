@@ -4,6 +4,10 @@ Prototipo para Colegio Jaime Molina Mota × Actuana Academy, Feria INTEC STEM. R
 
 La identidad visual usa azul marino `#16324F`, turquesa oscuro `#087F8C`, blanco suave `#F5F8FA` y ámbar `#F4B942`. El símbolo de casa y ruta aparece en la cabecera, los iconos PWA y el dashboard ITS, con variantes legibles para modo oscuro. La [fuente del logo y las exportaciones](assets/branding/README.md) permiten regenerar los iconos sin añadir dependencias al build normal.
 
+El formulario usa una sola selección de categorías. **Otro** permite escribir un tipo propio o describir libremente el incidente; cambiar de categoría conserva el detalle. El nombre se guarda en el texto del reporte, dentro del límite conjunto de 600 caracteres y con moderación, sin cambiar las categorías de Firestore. **Mi ubicación** solo centra y marca el mapa; tocar el mapa o usar **Reportar** inicia un reporte, y **Usar mi ubicación** dentro del formulario fija su punto aproximado.
+
+La [opción privada de cédula para invitados](docs/REPORTES_CON_CEDULA.md) está implementada y desactivada por defecto: requiere configurar servidor, reglas y política antes de recoger documentos reales. Conserva una huella HMAC diaria para cuotas, nunca el número completo ni una referencia de identidad en reportes públicos; no verifica identidad. Hasta activarla se mantiene el envío existente sin cuenta. El [diseño del piloto separado para Policía Nacional y DIGESETT](docs/autoridades/FASE_1_PILOTO.md) documenta arquitectura, roles, avisos aprobados y API; la construcción del panel queda para la fase siguiente, tras revisar el diseño.
+
 El [MVP ITS de una cámara](traffic-its/README.md) incluye un servicio Python, API REST/WebSocket y dashboard separado. Empieza con una demostración sintética identificada; las fuentes reales requieren video autorizado y calibración antes de medir velocidad métrica.
 
 Para reproducir el ITS desde Internet, consulta la [guía de despliegue público de la demo](traffic-its/deployment/PUBLICAR_DEMO.md): un servicio de lectura con datos sintéticos y escenario de congestión. El enlace Deploy crea otra instancia en una cuenta de alojamiento; la app ya tiene configurada la dirección del servicio indicado abajo.
@@ -45,7 +49,7 @@ Abre la URL de la terminal. La configuración web del proyecto Firebase `saferou
 - Registro e inicio de sesión por correo con Firebase Authentication. Los reportes públicos continúan sin mostrar el correo. En modo demostración el alta está desactivada hasta conectar Firebase.
 - En demostración: persistencia en este navegador y moderación local de los pendientes.
 - PWA instalable con manifest, iconos para Android/iOS y service worker. Las nuevas versiones se descargan y activan automáticamente; la página se recarga cuando no hay una tarea pendiente. Los mapas, rutas y servicios conectados necesitan internet; no se descargan mapas masivamente.
-- API de IA en Vercel que sugiere categoría y necesidad de revisión, con autenticación y cuotas. El botón “Sugerir categoría” usa reglas de palabras clave, no IA.
+- API opcional de clasificación en Vercel, conservada con autenticación y cuotas. El formulario ciudadano usa selección directa; no requiere sugerencias automáticas ni llamadas a IA para reportar.
 
 ## 3. Firebase: proyecto saferoute-f87c1
 
@@ -63,9 +67,9 @@ Para probar sin conexión al proyecto, ejecuta `npm run dev -- --mode demo`, com
 
 Si al enviar un reporte sin iniciar sesión falla `accounts:signUp` con HTTP 400, la app está intentando obtener una sesión anónima antes de escribir en Firestore. Revisa **Authentication → Método de acceso → Anónimo**. `ADMIN_ONLY_OPERATION` o `OPERATION_NOT_ALLOWED` indican un método no habilitado; `CONFIGURATION_NOT_FOUND` requiere terminar la configuración de Authentication. Si el proveedor ya está habilitado, revisa `error.message` en la respuesta de esa petición para distinguir problemas de clave, restricciones u otras causas. La app conserva el formulario y muestra un aviso específico para los errores conocidos; no se considera guardado un reporte cuando falla la autenticación.
 
-`npm run test:firebase` comprueba estos tres rechazos HTTP con el SDK de Firebase en Chromium y respuestas simuladas. No crea usuarios ni escribe reportes en el proyecto real. Usa la misma instalación de Chromium y la variable `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` documentadas para las pruebas PWA.
+`npm run test:firebase` comprueba estos tres rechazos HTTP y el envío privado opcional con cédula, usando el SDK de Firebase en Chromium y respuestas simuladas. Verifica que la cédula no aparezca en el reporte público ni en almacenamiento del navegador y que no exista una vía alternativa de escritura tras fallar la API. No crea usuarios ni escribe reportes en el proyecto real. Usa la misma instalación de Chromium y la variable `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` documentadas para las pruebas PWA.
 
-La configuración web de Firebase es pública y se incluye en la compilación de la PWA. No utiliza un archivo de cuenta de servicio ni una clave privada. La cuenta de servicio solo es necesaria para la API opcional de IA en el servidor; configúrala como secreto del servidor, nunca dentro del cliente ni del ZIP. Si una clave privada se comparte en un chat o repositorio, revócala y reemplázala antes de usar esa cuenta.
+La configuración web de Firebase es pública y se incluye en la compilación de la PWA. El cliente no utiliza una cuenta de servicio ni una clave privada. Las funciones opcionales de IA y de ingreso privado con cédula necesitan credenciales de servidor; configúralas como secretos, nunca dentro del cliente ni del ZIP. Si una clave privada se comparte en un chat o repositorio, revócala y reemplázala antes de usar esa cuenta.
 
 Al conectar Firestore, el mapa puede quedar sin reportes: los ejemplos locales no se copian a la base real. Un reporte nuevo queda pendiente hasta que un moderador lo apruebe en la consola.
 
@@ -110,7 +114,7 @@ En las variables de servidor de Vercel:
 - `GOOGLE_AI_MODEL`: identificador de un modelo de Gemini habilitado en tu cuenta con soporte GenerateContent y respuestas JSON estructuradas. Consulta la documentación del proveedor y disponibilidad del modelo.
 - `FIREBASE_SERVICE_ACCOUNT_JSON`: JSON completo de una cuenta de servicio del MISMO proyecto Firebase, como variable secreta en una sola línea. Se usa para verificar tokens y guardar cuotas en Firestore. Nunca lo pongas en una variable VITE ni en un archivo del repositorio.
 
-La función verifica el token Firebase, limita una solicitud/minuto y diez/día por sesión, y 200/día globales. Una solicitud fallida después de reservar cupo también consume cupo. No guarda el texto enviado en el documento de cuota. El texto se envía a Google para clasificarlo; usa ejemplos ficticios para la feria. La respuesta se valida y el usuario puede corregir la categoría. Todos los envíos siguen pendientes: la IA no aprueba hechos ni decide que un barrio es seguro. Establece cuotas/presupuesto en el proveedor. Los costes dependen de tus cuentas.
+La función verifica el token Firebase, limita una solicitud/minuto y diez/día por sesión, y 200/día globales. Una solicitud fallida después de reservar cupo también consume cupo. No guarda el texto enviado en el documento de cuota. El texto se envía a Google para clasificarlo; usa ejemplos ficticios para la feria. La respuesta se valida. Este endpoint no se invoca desde el formulario simplificado; las categorías se eligen directamente y la IA no aprueba hechos ni decide que un barrio es seguro. Establece cuotas/presupuesto en el proveedor. Los costes dependen de tus cuentas.
 
 ## 6. Verificar antes de la feria
 

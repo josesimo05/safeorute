@@ -5,13 +5,15 @@ import PlaceSearch from './PlaceSearch';
 import NavigationSession from './NavigationSession';
 import ItsPanel from './ItsPanel';
 import SupportHelp from './SupportHelp';
+import GuestIdentityFields, {useGuestIdentityConfig} from './GuestIdentityFields';
+import {composeReportDescription, reportDetailsLimit} from './report-composer';
 import './its.css';
 import { useI18n } from './LocaleContext';
 import { languages } from './i18n';
 import { countryOptions, normalizeCountry, countryMapView } from './regions';
 import { firebaseErrorMessage } from './firebase-errors';
-import { categories, colors, classify, duplicate, validate, period, routeReportCount, reportLevel } from './logic';
-import { cloud, watch, watchUser, submit, moderate, reset, analyze, register, login, logout, askSupport } from './store';
+import { categories, colors, duplicate, validate, period, routeReportCount, reportLevel } from './logic';
+import { cloud, watch, watchUser, submit, moderate, reset, register, login, logout, askSupport } from './store';
 import { hasRouting, getRoutes, nearbyPlaces, similarRoutes, tileUrl, mapProvider, mapAttribution } from './navigation';
 const poiFilters = ['Gasolineras', 'Farmacias', 'Supermercados', 'Hospitales'];
 function localDay(value) {
@@ -48,7 +50,7 @@ export default function App() {
   const countries = useMemo(() => countryOptions(language), [language]);
   const locale = country === 'all' ? language : `${language}-${country.toUpperCase()}`;
   const routeRequest = useRef(0);
-  const locationRequests = useRef({origin: 0, destination: 0});
+  const locationRequests = useRef({origin: 0, destination: 0, map: 0, report: 0});
   useEffect(() => {
     try {
       localStorage.setItem('saferoute-country', country);
@@ -66,6 +68,8 @@ export default function App() {
     [busy, setBusy] = useState(false),
     [online, setOnline] = useState(navigator.onLine),
     [description, setDescription] = useState(''),
+    [customType, setCustomType] = useState(''),
+    [cedula, setCedula] = useState(''),
     [category, setCategory] = useState('Otro'),
     [date, setDate] = useState(localDate()),
     [offlineMap, setOfflineMap] = useState(false),
@@ -94,6 +98,12 @@ export default function App() {
   const [navigationPosition, setNavigationPosition] = useState(null);
   const [mapCenter, setMapCenter] = useState(() => countryMapView(country).center);
   const [itsCameras, setItsCameras] = useState([]);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [locatingMap, setLocatingMap] = useState(false);
+  const [locatingReport, setLocatingReport] = useState(false);
+  const reportOpenRef = useRef(form);
+  reportOpenRef.current = form;
+  const guestIdentity = useGuestIdentityConfig({enabled: Boolean(cloud && form && (!user || user.isAnonymous)), online});
   const guidanceRef = useRef(false);
   guidanceRef.current = guiding;
   const mapNode = useRef(),
@@ -104,6 +114,7 @@ export default function App() {
     poiLayer = useRef(),
     pointLayer = useRef(),
     userLayer = useRef(),
+    locationLayer = useRef(),
     itsLayer = useRef(),
     tiles = useRef(),
     clickMode = useRef('report'),
@@ -160,6 +171,7 @@ export default function App() {
     poiLayer.current = L.layerGroup().addTo(m);
     pointLayer.current = L.layerGroup().addTo(m);
     userLayer.current = L.layerGroup().addTo(m);
+    locationLayer.current = L.layerGroup().addTo(m);
     itsLayer.current = L.layerGroup().addTo(m);
     m.on('moveend', () => {
       const c = m.getCenter().wrap();
@@ -167,9 +179,15 @@ export default function App() {
       if (pickMode.current) setPickerPoint({lat:c.lat,lon:c.lng});
     });
     m.on('dragstart', () => {
+      locationRequests.current.map++;
+      setLocatingMap(false);
       if (guidanceRef.current) setFollowPosition(false);
     });
     m.on('click', e => {
+      locationRequests.current.map++;
+      locationRequests.current.report++;
+      setLocatingMap(false);
+      setLocatingReport(false);
       const p = {
         lat: Number(e.latlng.wrap().lat.toFixed(6)),
         lon: Number(e.latlng.wrap().lng.toFixed(6))
@@ -193,6 +211,8 @@ export default function App() {
     })) : null;
     resize?.observe(mapNode.current);
     return () => {
+      locationRequests.current.map++;
+      locationRequests.current.report++;
       resize?.disconnect();
       m.remove();
     };
@@ -202,6 +222,34 @@ export default function App() {
     map.current?.setView(view.center, view.zoom, {animate:false});
     setMapCenter(view.center);
   }, [country]);
+  useEffect(() => {
+    locationRequests.current.map++;
+    locationRequests.current.report++;
+    setLocatingMap(false);
+    setLocatingReport(false);
+  }, [country, tab]);
+  useEffect(() => { setCurrentLocation(null); }, [country]);
+  useEffect(() => {
+    if (form) {
+      // An old success toast must not cover the next report's submit button.
+      setMessage('');
+    } else {
+      locationRequests.current.report++;
+      setLocatingReport(false);
+      setCedula('');
+    }
+  }, [form]);
+  useEffect(() => {
+    if (!locationLayer.current) return;
+    locationLayer.current.clearLayers();
+    if (!currentLocation || guiding || tab === 'Tráfico ITS' || tab === 'Navegar') return;
+    const marker = L.circleMarker([currentLocation.lat, currentLocation.lng], {
+      radius: 8, color: '#fff', weight: 3, fillColor: '#087F8C', fillOpacity: 1,
+      interactive: false, className: 'current-location-marker',
+    }).addTo(locationLayer.current);
+    marker.getElement()?.setAttribute('aria-label', tr('Tu ubicación actual'));
+    marker.getElement()?.setAttribute('role', 'img');
+  }, [currentLocation, guiding, tab, language]);
   const itsMarkerSignature = JSON.stringify(itsCameras.map(({id, location, stale, speedKmh}) =>
     ({id, location, stale, speedKmh})));
   useEffect(() => {
@@ -542,28 +590,55 @@ export default function App() {
       if (requestId === routeRequest.current) setRouteBusy(false);
     }
   }
-  async function locateReport() {
+  function locateMap() {
     if (!navigator.geolocation) {
       setMessage('Este navegador no ofrece geolocalización. Selecciona en el mapa.');
       return;
     }
+    const requestId = ++locationRequests.current.map;
+    setLocatingMap(true);
     navigator.geolocation.getCurrentPosition(p => {
+      if (requestId !== locationRequests.current.map) return;
+      setLocatingMap(false);
+      const loc = {lat: p.coords.latitude, lng: p.coords.longitude};
+      if (!Number.isFinite(loc.lat) || !Number.isFinite(loc.lng) || Math.abs(loc.lat) > 90 || Math.abs(loc.lng) > 180) return;
+      // Precise GPS remains in memory, separate from approximate report points.
+      setCurrentLocation(loc);
+      map.current?.setView([loc.lat, loc.lng], 16, {animate:false});
+    }, () => {
+      if (requestId !== locationRequests.current.map) return;
+      setLocatingMap(false);
+      setMessage('No se pudo obtener tu ubicación. Puedes elegirla en el mapa.');
+    }, {timeout:10000, maximumAge:60000});
+  }
+  function locateReport() {
+    if (!navigator.geolocation) {
+      setMessage('Este navegador no ofrece geolocalización. Selecciona en el mapa.');
+      return;
+    }
+    const requestId = ++locationRequests.current.report;
+    setLocatingReport(true);
+    navigator.geolocation.getCurrentPosition(p => {
+      if (requestId !== locationRequests.current.report || !reportOpenRef.current) return;
+      setLocatingReport(false);
+      if (!Number.isFinite(p.coords.latitude) || !Number.isFinite(p.coords.longitude) || Math.abs(p.coords.latitude) > 90 || Math.abs(p.coords.longitude) > 180) return;
       const loc = {
         lat: Number(p.coords.latitude.toFixed(3)),
         lng: Number(p.coords.longitude.toFixed(3))
       };
       setPoint(loc);
       map.current.setView([loc.lat, loc.lng], 16);
-      setForm(true);
-    }, () => setMessage('No se pudo obtener tu ubicación. Puedes elegirla en el mapa.'), {
+    }, () => {
+      if (requestId !== locationRequests.current.report || !reportOpenRef.current) return;
+      setLocatingReport(false);
+      setMessage('No se pudo obtener tu ubicación. Puedes elegirla en el mapa.');
+    }, {
       timeout: 10000,
       maximumAge: 60000
     });
   }
   function quickReport(c) {
     setCategory(c);
-    setDescription(c === 'Otro' ? '' : `Reporte comunitario de ${c.toLowerCase()}.`);
-    setDate(localDate());
   }
   async function send(e) {
     e.preventDefault();
@@ -571,9 +646,23 @@ export default function App() {
       setMessage('Selecciona una ubicación en el mapa.');
       return;
     }
+    if (cloud && (!user || user.isAnonymous) && ['loading', 'unavailable'].includes(guestIdentity.status)) {
+      setMessage('No pudimos comprobar el envío con cédula. Reintenta antes de enviar.');
+      return;
+    }
+    const withIdentity = guestIdentity.status === 'required' && (!user || user.isAnonymous);
+    if (withIdentity && (!/^[0-9 -]+$/.test(cedula) || cedula.replace(/[ -]/g, '').length !== 11)) {
+      setMessage('La cédula debe contener 11 dígitos. No incluyas otros datos.');
+      return;
+    }
+    if (category === 'Otro' && !customType.trim() && !description.trim()) {
+      setMessage('Indica el tipo de incidente o añade un detalle.');
+      return;
+    }
     const r = {
       category,
-      description: description.trim(),
+      description: composeReportDescription({category, description, customType,
+        fallback: category === 'Otro' ? tr('Reporte comunitario.') : tr('Reporte comunitario de {category}.', {category:tr(category)})}),
       occurredAt: new Date(date).toISOString(),
       ...point
     };
@@ -588,10 +677,12 @@ export default function App() {
     }
     setBusy(true);
     try {
-      const result = await submit(r);
+      const result = await submit(r, {cedula: withIdentity ? cedula : undefined, useGuestIdentity: withIdentity});
       if (result) setRows(result);
       setForm(false);
       setDescription('');
+      setCustomType('');
+      setCedula('');
       setPoint(null);
       setMessage('Reporte enviado a revisión.');
     } catch (e) {
@@ -599,18 +690,6 @@ export default function App() {
         guest: !user || user.isAnonymous,
         fallback: 'No se guardó el reporte. Comprueba la conexión y vuelve a intentarlo.'
       }));
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function ai() {
-    setBusy(true);
-    try {
-      const result = await analyze(description);
-      setCategory(result.category);
-      setMessage(result.needsReview ? 'La IA recomienda revisión humana.' : 'Categoría sugerida por IA. Puedes corregirla.');
-    } catch (e) {
-      setMessage(e.message);
     } finally {
       setBusy(false);
     }
@@ -757,7 +836,7 @@ export default function App() {
           setPanelExpanded(true);
           setPicking(false);
           pickMode.current = null;
-        }}>{tr(t)}</button>)}</nav><div className="head-actions"><button type="button" className="icon-button preferences-button" aria-label={tr("Idioma y país")} title={tr("Idioma y país")} onClick={() => setPreferencesOpen(true)}>🌐</button><button className="icon-button" aria-label={theme === 'dark' ? tr('Cambiar a tema claro') : tr('Cambiar a tema oscuro')} title={theme === 'dark' ? tr('Tema claro') : tr('Tema oscuro')} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? '☀' : '☾'}</button>{user ? <button className="account-button" onClick={accountLogout}>👤 {user.email || tr('Cerrar sesión')}</button> : <button className="account-button" onClick={() => {
+        }}>{tr(t)}</button>)}</nav><div className="head-actions"><button type="button" className="icon-button preferences-button" aria-label={tr("Idioma y país")} title={tr("Idioma y país")} onClick={() => setPreferencesOpen(true)}>🌐</button><button className="icon-button" aria-label={theme === 'dark' ? tr('Cambiar a tema claro') : tr('Cambiar a tema oscuro')} title={theme === 'dark' ? tr('Tema claro') : tr('Tema oscuro')} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? '☀' : '☾'}</button>{user && !user.isAnonymous ? <button className="account-button" onClick={accountLogout}>👤 {user.email || tr('Cerrar sesión')}</button> : <button className="account-button" onClick={() => {
           setAccountMode('login');
           setAccountError('');
           setAccount(true);
@@ -766,7 +845,7 @@ export default function App() {
           setPoint(null);
         }}>{tr("＋ Reportar")}</button></div></header>
  <main className={`${tab === 'Navegar' ? 'is-planning' : ''} ${!panelExpanded || picking ? 'map-focused' : ''}`}><div className="intro"><div><span className="eyebrow">{tr("INFORMACIÓN QUE NOS CONECTA")}</span><h1>{tr("Tu ciudad, con más contexto.")}</h1><p>{tr("Explora lo que comparte la comunidad. Decide cómo moverte.")}</p><div className="hero-tags"><span>{tr("⌖ Reportes comunitarios")}</span><span>{tr("✦ Rutas con contexto")}</span><span>{tr("◉ Diseñado para móvil")}</span></div></div><div className="mode"><i className={online ? 'dot' : 'dot off'} />{cloud ? tr('Comunidad · Firebase') : tr('Demostración · Datos simulados')}<small>{online ? tr('Con conexión') : tr('Sin conexión')}</small></div></div>
- <PwaControls online={online} editing={Boolean(supportOpen || preferencesOpen || form || account || busy || picking || routeBusy || guiding || originText || destText || routes.length)} demo={!cloud} />
+ <PwaControls online={online} editing={Boolean(supportOpen || preferencesOpen || form || account || busy || locatingMap || locatingReport || picking || routeBusy || guiding || originText || destText || routes.length)} demo={!cloud} />
  <section className={`workspace ${tab === 'Navegar' ? 'navigation-workspace' : ''} ${panelExpanded ? 'panel-expanded' : 'panel-collapsed'} ${picking ? 'is-picking' : ''} ${searchActive ? 'is-searching' : ''}`}><aside><button type="button" className="panel-toggle" aria-label={panelExpanded && !picking ? tr('Ver mapa completo') : tab === 'Navegar' ? tr('Mostrar planificador') : tab === 'Tráfico ITS' ? tr('Mostrar tráfico ITS') : tr('Mostrar reportes')} aria-controls="workspace-panel" aria-expanded={panelExpanded && !picking} onClick={() => {
             setSearchActive(null);
             setPanelExpanded(v => picking ? true : !v);
@@ -828,7 +907,7 @@ export default function App() {
                 }}>{tr("Restaurar demostración")}</button></div>}</>}
  </div></aside><div className="map-wrap"><div ref={mapNode} className="map" aria-label={tr("Mapa de reportes comunitarios y rutas")} /><div className="map-label">{picking ? tr('Toca el mapa para elegir {place}', {
               place: tr(pickMode.current === 'origin' ? 'el origen' : 'el destino')
-            }) : tab === 'Navegar' ? tr('Origen A · Destino B') : tab === 'Tráfico ITS' ? tr('Cámaras ITS · ubicaciones de prueba') : tr('Toca para reportar')}</div>{(!online || offlineMap) && <div className="map-offline" role="status"><span>{online ? tr('No se pudo cargar parte del mapa. Puedes reintentarlo.') : tr('El mapa necesita conexión a internet.')}{!cloud && tr(' Tus reportes locales siguen disponibles.')}</span><button type="button" disabled={!online} onClick={() => tiles.current?.redraw()}>{tr("Reintentar mapa")}</button></div>}{tab !== 'Navegar' && tab !== 'Tráfico ITS' && <button className="locate" onClick={locateReport}>{tr("◎ Mi ubicación")}</button>}<details className="map-legend-control"><summary>{tr("Leyenda")}</summary>{tab === 'Tráfico ITS' ? <div className="legend"><span><i className="legend-dot" style={{background:'#F4B942'}} />{tr('Cámara ITS · demostración')}</span></div> : mapLegend}</details>{routePicking && <><div className="picker-crosshair" aria-hidden="true"><span>{pickMode.current === 'origin' ? 'A' : 'B'}</span></div><section className="map-picker" aria-label={tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}><div className="picker-heading"><strong>{tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}</strong><button type="button" onClick={cancelMapPick}>{tr('Cancelar selección')}</button></div><div className="picker-confirm"><p>{tr('Arrastra el mapa y coloca el punto bajo la mira.')}{pickerPoint && <small dir="ltr">{pickerPoint.lat.toFixed(5)}, {pickerPoint.lon.toFixed(5)}</small>}</p><button type="button" className="primary" onClick={confirmMapPick}>{tr(pickMode.current === 'origin' ? 'Confirmar origen' : 'Confirmar destino')}</button></div></section></>}{guiding && activeRoute && <NavigationSession route={activeRoute} onPosition={setNavigationPosition} onStop={stopNavigation} onRecalculate={recalculateNavigation} follow={followPosition} onFollowChange={setFollowPosition} onOverview={() => {
+            }) : tab === 'Navegar' ? tr('Origen A · Destino B') : tab === 'Tráfico ITS' ? tr('Cámaras ITS · ubicaciones de prueba') : tr('Toca para reportar')}</div>{(!online || offlineMap) && <div className="map-offline" role="status"><span>{online ? tr('No se pudo cargar parte del mapa. Puedes reintentarlo.') : tr('El mapa necesita conexión a internet.')}{!cloud && tr(' Tus reportes locales siguen disponibles.')}</span><button type="button" disabled={!online} onClick={() => tiles.current?.redraw()}>{tr("Reintentar mapa")}</button></div>}{tab !== 'Navegar' && tab !== 'Tráfico ITS' && <button className="locate" aria-busy={locatingMap} onClick={locateMap}>{tr("◎ Mi ubicación")}</button>}<details className="map-legend-control"><summary>{tr("Leyenda")}</summary>{tab === 'Tráfico ITS' ? <div className="legend"><span><i className="legend-dot" style={{background:'#F4B942'}} />{tr('Cámara ITS · demostración')}</span></div> : mapLegend}</details>{routePicking && <><div className="picker-crosshair" aria-hidden="true"><span>{pickMode.current === 'origin' ? 'A' : 'B'}</span></div><section className="map-picker" aria-label={tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}><div className="picker-heading"><strong>{tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}</strong><button type="button" onClick={cancelMapPick}>{tr('Cancelar selección')}</button></div><div className="picker-confirm"><p>{tr('Arrastra el mapa y coloca el punto bajo la mira.')}{pickerPoint && <small dir="ltr">{pickerPoint.lat.toFixed(5)}, {pickerPoint.lon.toFixed(5)}</small>}</p><button type="button" className="primary" onClick={confirmMapPick}>{tr(pickMode.current === 'origin' ? 'Confirmar origen' : 'Confirmar destino')}</button></div></section></>}{guiding && activeRoute && <NavigationSession route={activeRoute} onPosition={setNavigationPosition} onStop={stopNavigation} onRecalculate={recalculateNavigation} follow={followPosition} onFollowChange={setFollowPosition} onOverview={() => {
   setFollowPosition(false);
   const height=map.current?.getSize().y || 800;
   map.current?.fitBounds(activeRoute.points.map(p=>[p.latitude,p.longitude]), {paddingTopLeft:[30,Math.min(200,height*.27)],paddingBottomRight:[30,Math.min(250,height*.34)],maxZoom:16});
@@ -837,17 +916,29 @@ export default function App() {
  {!guiding && !routePicking && <button type="button" className="support-launcher" aria-label={tr('Ayuda y soporte')} title={tr('Ayuda y soporte')} aria-haspopup="dialog" aria-expanded={supportOpen} onClick={() => {setForm(false);setAccount(false);setPreferencesOpen(false);setSupportOpen(true);}}><span aria-hidden="true">?</span>{tr('Ayuda')}</button>}
  <SupportHelp open={supportOpen} onClose={() => setSupportOpen(false)} askAssistant={askSupport} />
  {message && <div className="toast" role="status">{tr(message)}<button aria-label={tr("Cerrar aviso")} onClick={() => setMessage('')}>×</button></div>}
- {form && <div className="overlay"><section role="dialog" aria-modal="true" aria-labelledby="report-title" className="dialog"><button className="close" aria-label={tr("Cerrar formulario")} onClick={() => setForm(false)}>×</button><span className="eyebrow">{tr("TU APORTE CUENTA")}</span><h2 id="report-title">{tr("Registra un incidente")}</h2><p>{tr("No incluyas nombres, rostros, teléfonos ni otros datos personales.")}</p><form onSubmit={send}><div className="quick-label">{tr("Reporte rápido")}<small>{tr("elige el tipo y marca el lugar")}</small></div><div className="quick-choices">{categories.map((c, i) => <button type="button" key={c} className={category === c ? 'quick-selected' : ''} onClick={() => quickReport(c)}><i style={{
-                background: colors[i]
-              }} />{tr(c)}</button>)}</div><label>{tr("Detalle opcional")}<textarea minLength={description ? 12 : 0} maxLength={600} placeholder={tr("Si hace falta, añade un detalle sin identificar a nadie…")} value={description} onChange={e => setDescription(e.target.value)} /></label><div className="assist"><button type="button" onClick={() => {
-              setCategory(classify(description));
-              setMessage('Sugerencia por palabras clave. Puedes corregirla.');
-            }}>{tr("Sugerir categoría")}</button><button type="button" disabled={busy || description.length < 12} onClick={ai}>{tr("Analizar con IA")}</button></div><label>{tr("Categoría")}<select value={category} onChange={e => setCategory(e.target.value)}>{categories.map(c => <option key={c} value={c}>{tr(c)}</option>)}</select></label><label>{tr("Fecha y hora del incidente")}<input type="datetime-local" required max={localDate()} value={date} onChange={e => setDate(e.target.value)} /></label><label>{tr("Ubicación aproximada")}</label><p className="location-value">{point ? `${point.lat.toFixed(3)}, ${point.lng.toFixed(3)}` : tr('No seleccionada')}</p><div className="assist"><button type="button" onClick={() => {
-              setForm(false);
-              setPicking(true);
-              setTab('Explorar');
-            }}>{tr("Elegir en el mapa")}</button><button type="button" onClick={locateReport}>{tr("Usar mi ubicación")}</button></div><small>{tr("Coordenadas aproximadas. No incluimos tu nombre en reportes públicos.")}</small><button className="primary wide" disabled={busy} type="submit">{busy ? tr('Procesando…') : tr('Enviar a revisión')}</button></form></section></div>}
- {preferencesOpen && <div className="overlay"><section role="dialog" aria-modal="true" aria-labelledby="preferences-title" className="dialog preferences-dialog"><button className="close" aria-label={tr("Cerrar preferencias")} onClick={() => setPreferencesOpen(false)}>×</button><h2 id="preferences-title">{tr("Idioma y país")}</h2><label>{tr("Idioma de la aplicación")}<select id="app-language" value={language} onChange={e => setLanguage(e.target.value)}>{languages.map(item => <option key={item.code} value={item.code}>{item.nativeName}</option>)}</select></label><p className="tiny">{tr("Versión sin conexión en ocho idiomas.")}</p><label>{tr("País de búsqueda")}<select id="search-country" value={country} onChange={e => changeCountry(e.target.value)}><option value="all">{tr("Todos los países")}</option>{countries.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}</select></label><small>{tr("Cambiar el país borra el origen y el destino actuales.")}</small><p className="tiny">{tr("Los nombres de lugares y los reportes se muestran en su idioma original.")}</p><div className="preferences-account">{user ? <button onClick={accountLogout}>{tr("Cerrar sesión")}</button> : <button onClick={() => {
+ {form && <div className="overlay"><section role="dialog" aria-modal="true" aria-labelledby="report-title" className="dialog report-dialog">
+  <button type="button" className="close" aria-label={tr("Cerrar formulario")} onClick={() => setForm(false)}>×</button>
+  <span className="eyebrow">{tr("TU APORTE CUENTA")}</span><h2 id="report-title">{tr("Registra un incidente")}</h2>
+  <p>{tr("No incluyas nombres, rostros, teléfonos ni otros datos personales.")}</p>
+  <form onSubmit={send}>
+    <div className="quick-label">{tr("Categoría")}<small>{tr("elige el tipo y marca el lugar")}</small></div>
+    <div className="quick-choices" role="group" aria-label={tr("Categoría")}>
+      {categories.map((c, i) => <button type="button" key={c} aria-pressed={category === c} className={category === c ? 'quick-selected' : ''} onClick={() => quickReport(c)}><i style={{background: colors[i]}} />{tr(c)}</button>)}
+    </div>
+    {category === 'Otro' && <>
+      <label>{tr('Tipo de incidente (opcional)')}<input maxLength={60} value={customType} onChange={e => setCustomType(e.target.value)} placeholder={tr('Ej. inundación, semáforo averiado…')} aria-describedby="other-type-help" /></label>
+      <p id="other-type-help" className="tiny">{tr('Indica el tipo de incidente o añade un detalle.')}</p>
+    </>}
+    <label>{tr("Detalle opcional")}<textarea minLength={description && !(category === 'Otro' && customType.trim()) ? 12 : 0} maxLength={reportDetailsLimit(category, customType)} placeholder={tr("Si hace falta, añade un detalle sin identificar a nadie…")} value={description} onChange={e => setDescription(e.target.value)} /></label>
+    <label>{tr("Fecha y hora del incidente")}<input type="datetime-local" required max={localDate()} value={date} onChange={e => setDate(e.target.value)} /></label>
+    <label>{tr("Ubicación aproximada")}</label><p className="location-value">{point ? `${point.lat.toFixed(3)}, ${point.lng.toFixed(3)}` : tr('No seleccionada')}</p>
+    <div className="assist"><button type="button" onClick={() => {setForm(false);setPicking(true);setTab('Explorar');}}>{tr("Elegir en el mapa")}</button><button type="button" aria-busy={locatingReport} onClick={locateReport}>{tr("Usar mi ubicación")}</button></div>
+    <small>{tr("Coordenadas aproximadas. No incluimos tu nombre en reportes públicos.")}</small>
+    <GuestIdentityFields status={guestIdentity.status} cedula={cedula} onChange={setCedula} onRetry={guestIdentity.retry} />
+    <button className="primary wide" disabled={busy || guestIdentity.status === 'loading' || guestIdentity.status === 'unavailable'} type="submit">{busy ? tr('Procesando…') : tr('Enviar a revisión')}</button>
+  </form>
+ </section></div>}
+ {preferencesOpen && <div className="overlay"><section role="dialog" aria-modal="true" aria-labelledby="preferences-title" className="dialog preferences-dialog"><button className="close" aria-label={tr("Cerrar preferencias")} onClick={() => setPreferencesOpen(false)}>×</button><h2 id="preferences-title">{tr("Idioma y país")}</h2><label>{tr("Idioma de la aplicación")}<select id="app-language" value={language} onChange={e => setLanguage(e.target.value)}>{languages.map(item => <option key={item.code} value={item.code}>{item.nativeName}</option>)}</select></label><p className="tiny">{tr("Versión sin conexión en ocho idiomas.")}</p><label>{tr("País de búsqueda")}<select id="search-country" value={country} onChange={e => changeCountry(e.target.value)}><option value="all">{tr("Todos los países")}</option>{countries.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}</select></label><small>{tr("Cambiar el país borra el origen y el destino actuales.")}</small><p className="tiny">{tr("Los nombres de lugares y los reportes se muestran en su idioma original.")}</p><div className="preferences-account">{user && !user.isAnonymous ? <button onClick={accountLogout}>{tr("Cerrar sesión")}</button> : <button onClick={() => {
             setPreferencesOpen(false);
             setAccountMode('login');
             setAccountError('');
