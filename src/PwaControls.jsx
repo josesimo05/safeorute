@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {useRegisterSW} from 'virtual:pwa-register/react';
 import {useI18n} from './LocaleContext';
+import {appRelease} from './release';
 
 const standalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const isAppleMobile = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -145,6 +146,7 @@ export default function PwaControls({online, editing, demo}) {
   return <details className="pwa-panel" ref={detailsRef} aria-label={t('Instalación y disponibilidad de SafeRoute')}>
     <summary className="pwa-summary"><strong>{t('Instalar y actualizar')}</strong><span className="pwa-brief">{t(reloadPending ? 'Nueva versión disponible' : online ? 'Con conexión' : 'Sin conexión')}</span></summary>
     <div className="pwa-body">
+    <small className="app-release" data-revision={appRelease.revision}>{t('Versión {version}', {version:appRelease.shortRevision})}</small>
     <div className="pwa-summary">
       <div>
         <strong>{t(installed ? 'SafeRoute en tu dispositivo' : 'Lleva SafeRoute contigo')}</strong>

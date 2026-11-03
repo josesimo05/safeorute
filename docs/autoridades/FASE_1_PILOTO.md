@@ -1,6 +1,6 @@
 # Piloto conjunto Policía Nacional y DIGESETT — Fase 1: diseño
 
-Estado: propuesta para revisión. Este documento no habilita cuentas oficiales, no conecta sistemas de las instituciones y no convierte la demostración ITS en vigilancia real. Las fases 2–5 requieren aprobación posterior del usuario.
+Estado: diseño completado con prototipo interactivo en `/piloto/`. El prototipo no habilita cuentas oficiales, no conecta sistemas de las instituciones y no convierte la demostración ITS en vigilancia real. La autenticación y la operación institucional pertenecen a las fases siguientes.
 
 ## Alcance acordado y decisiones pendientes
 
@@ -32,7 +32,23 @@ Comprobado mediante lectura de código y dependencias locales:
 | ITS mostrado a ciudadanos | `api/its.js` → `safeorute-its-demo.onrender.com` | Pasarela actual solo acepta datos sintéticos; no debe abrirse silenciosamente a datos reales |
 | Alojamiento ITS | `render.yaml`: demostración pública, lectura, `autoDeploy: false` | No usar ese despliegue como backend privado de las autoridades |
 
-La moderación actual de Firebase se realiza desde consola; la pestaña de moderación de la app es una simulación local. No existe todavía una bandeja institucional, publicación oficial ni respuesta privada a reporteros en producción.
+La moderación actual de Firebase se realiza desde consola; la pestaña de moderación de la app es una simulación local. El prototipo incorpora una bandeja de prueba; todavía no existe una bandeja institucional autenticada, publicación oficial ni respuesta privada a reporteros en producción.
+
+## Prototipo visual terminado
+
+Abre `/piloto/` en el despliegue o ejecuta `npm run dev` y visita esa ruta. Tiene una entrada HTML y un paquete de interfaz propios; la aplicación ciudadana conserva su entrada `/`. Compartir alojamiento para esta maqueta facilita su revisión. El panel operativo futuro se desplegará en un origen independiente con la API y autenticación previstas en este diseño.
+
+Recorridos disponibles:
+
+1. **Resumen:** indicadores que filtran la bandeja y un esquema ilustrativo de Santo Domingo con ubicaciones ficticias seleccionables. No es cartografía para navegación.
+2. **Reportes:** búsqueda, filtros, estados, asignación y notas de prueba. El detalle separa Observado, Causa probable, confianza y su criterio. Los perfiles muestran la vista de cada institución.
+3. **Avisos:** crear un borrador como operador, enviarlo a revisión, cambiar a otro perfil supervisor, aprobar su versión y publicarla en la vista ciudadana simulada. Retirar un aviso exige motivo; editar invalida su aprobación anterior.
+4. **Cámaras:** ejemplos de congestión y estado, incluida una cámara sin señal con velocidad desconocida. No hay video ni cámaras conectadas.
+5. **Historial:** acciones de la simulación y reinicio de los datos de prueba.
+
+El selector **Perfil de demostración** muestra vistas y reglas de flujo; no constituye login, MFA ni una frontera de seguridad. El estado vive en memoria y se reinicia al recargar. No llama a una API, no escribe en Firestore, no guarda notas en el navegador, no envía avisos a ciudadanos y no solicita cédulas ni credenciales. Los permisos institucionales reales deben implementarse y validarse en el servidor durante la fase operativa.
+
+El prototipo no instala el manifest ciudadano ni se guarda en la caché de navegación de su PWA. La ruta `/piloto/` queda fuera del fallback ciudadano para que el enlace abra su propia entrada.
 
 ## Arquitectura elegida
 
@@ -61,7 +77,7 @@ flowchart LR
     P --> R[Copias cifradas y recuperación probada]
 ```
 
-Estructura propuesta, todavía no creada por esta fase:
+Estructura prevista para la aplicación operativa; `apps/authorities/` ya contiene el prototipo visual:
 
 ```text
 apps/authorities/              # React: acceso, bandeja, caso, mapa, avisos
@@ -261,7 +277,7 @@ La revisión profesional de seguridad y la confirmación jurídica son condicion
 
 ## Entrega por fases y siguiente decisión
 
-1. **Fase 1, este documento:** arquitectura, permisos, contratos, separación de datos, metas y preguntas pendientes. Revisar con el usuario; no se han creado panel ni cuentas institucionales.
+1. **Fase 1, este documento y `/piloto/`:** arquitectura, permisos, contratos, separación de datos, metas, preguntas pendientes y prototipo visual navegable. No se han creado cuentas institucionales ni conectado datos reales.
 2. **Fase 2, tras aprobación:** entorno de prueba aislado, login con MFA/roles, bandeja, estados, mapa y pruebas de autorización. Usar datos sintéticos hasta designar responsables y confirmar proveedores.
 3. **Fase 3, tras aprobación:** outbox/WS, recuperación, fuentes ITS autorizadas y frescura; mantener demo claramente separada de producción.
 4. **Fase 4, tras aprobación:** avisos con doble revisión, publicación/retractación, respuestas privadas y plantillas; ampliar app ciudadana con sus reglas públicas.

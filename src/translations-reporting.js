@@ -1,6 +1,7 @@
 // Offline report form and private guest-identity copy.
 // Columns: Spanish, English, French, Portuguese, German, Italian, Arabic, Chinese.
 export default [
+  ['Versión {version}', 'Version {version}', 'Version {version}', 'Versão {version}', 'Version {version}', 'Versione {version}', 'الإصدار {version}', '版本 {version}'],
   ['Has alcanzado el límite temporal de reportes. Inténtalo más tarde.', 'You have reached the temporary report limit. Try again later.', 'Vous avez atteint la limite temporaire de signalements. Réessayez plus tard.', 'Você atingiu o limite temporário de relatos. Tente novamente mais tarde.', 'Du hast das vorübergehende Meldelimit erreicht. Versuche es später erneut.', 'Hai raggiunto il limite temporaneo di segnalazioni. Riprova più tardi.', 'لقد بلغت الحد المؤقت للبلاغات. حاول لاحقًا.', '已达到报告暂时限额，请稍后重试。'],
   ['Tipo de incidente (opcional)', 'Incident type (optional)', 'Type d’incident (facultatif)', 'Tipo de incidente (opcional)', 'Art des Vorfalls (optional)', 'Tipo di incidente (facoltativo)', 'نوع الحادث (اختياري)', '事件类型（可选）'],
   ['Ej. inundación, semáforo averiado…', 'E.g. flooding, broken traffic light…', 'Ex. inondation, feu de circulation en panne…', 'Ex. alagamento, semáforo avariado…', 'Z. B. Überflutung, defekte Ampel…', 'Es. allagamento, semaforo guasto…', 'مثال: فيضان، إشارة مرور معطلة…', '例如：积水、信号灯故障…'],
