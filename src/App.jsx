@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import PwaControls from './PwaControls';
+import ProjectOverview from './ProjectOverview';
 import PlaceSearch from './PlaceSearch';
 import NavigationSession from './NavigationSession';
 import ItsPanel from './ItsPanel';
@@ -844,8 +845,8 @@ export default function App() {
           setForm(true);
           setPoint(null);
         }}>{tr("＋ Reportar")}</button></div></header>
- <main className={`${tab === 'Navegar' ? 'is-planning' : ''} ${!panelExpanded || picking ? 'map-focused' : ''}`}><div className="intro"><div><span className="eyebrow">{tr("INFORMACIÓN QUE NOS CONECTA")}</span><h1>{tr("Tu ciudad, con más contexto.")}</h1><p>{tr("Explora lo que comparte la comunidad. Decide cómo moverte.")}</p><div className="hero-tags"><span>{tr("⌖ Reportes comunitarios")}</span><span>{tr("✦ Rutas con contexto")}</span><span>{tr("◉ Diseñado para móvil")}</span></div></div><div className="mode"><i className={online ? 'dot' : 'dot off'} />{cloud ? tr('Comunidad · Firebase') : tr('Demostración · Datos simulados')}<small>{online ? tr('Con conexión') : tr('Sin conexión')}</small></div></div>
- <PwaControls online={online} editing={Boolean(supportOpen || preferencesOpen || form || account || busy || locatingMap || locatingReport || picking || routeBusy || guiding || originText || destText || routes.length)} demo={!cloud} />
+ <main className={`${tab === 'Navegar' ? 'is-planning' : ''} ${!panelExpanded || picking ? 'map-focused' : ''} ${tab === 'Explorar' && panelExpanded && !picking ? 'has-project-overview' : ''}`}><div className="intro"><div><span className="eyebrow">{tr("INFORMACIÓN QUE NOS CONECTA")}</span><h1>{tr("Tu ciudad, con más contexto.")}</h1><p>{tr("Consulta reportes comunitarios y compara rutas con más contexto.")}</p><div className="hero-tags"><span>{tr("⌖ Reportes comunitarios")}</span><span>{tr("✦ Rutas con contexto")}</span><span>{tr("◉ Diseñado para móvil")}</span></div></div><div className="mode"><i className={online ? 'dot' : 'dot off'} />{cloud ? tr('Reportes de la comunidad') : tr('Demostración · Datos simulados')}<small>{online ? tr('Con conexión') : tr('Sin conexión')}</small></div></div>
+ {tab === 'Explorar' && <ProjectOverview />}
  <section className={`workspace ${tab === 'Navegar' ? 'navigation-workspace' : ''} ${panelExpanded ? 'panel-expanded' : 'panel-collapsed'} ${picking ? 'is-picking' : ''} ${searchActive ? 'is-searching' : ''}`}><aside><button type="button" className="panel-toggle" aria-label={panelExpanded && !picking ? tr('Ver mapa completo') : tab === 'Navegar' ? tr('Mostrar planificador') : tab === 'Tráfico ITS' ? tr('Mostrar tráfico ITS') : tr('Mostrar reportes')} aria-controls="workspace-panel" aria-expanded={panelExpanded && !picking} onClick={() => {
             setSearchActive(null);
             setPanelExpanded(v => picking ? true : !v);
@@ -912,6 +913,7 @@ export default function App() {
   const height=map.current?.getSize().y || 800;
   map.current?.fitBounds(activeRoute.points.map(p=>[p.latitude,p.longitude]), {paddingTopLeft:[30,Math.min(200,height*.27)],paddingBottomRight:[30,Math.min(250,height*.34)],maxZoom:16});
 }} recalculating={routeBusy} />}</div></section>
+ <PwaControls online={online} editing={Boolean(supportOpen || preferencesOpen || form || account || busy || locatingMap || locatingReport || picking || routeBusy || guiding || originText || destText || routes.length)} demo={!cloud} />
  <footer><p>{tr("Los reportes comunitarios no están verificados. SafeRoute no determina si una zona es segura. Conduce y reporta sólo cuando el vehículo esté detenido.")}</p><span>JMMM × Actuana Academy · INTEC STEM</span></footer></main>
  {!guiding && !routePicking && <button type="button" className="support-launcher" aria-label={tr('Ayuda y soporte')} title={tr('Ayuda y soporte')} aria-haspopup="dialog" aria-expanded={supportOpen} onClick={() => {setForm(false);setAccount(false);setPreferencesOpen(false);setSupportOpen(true);}}><span aria-hidden="true">?</span>{tr('Ayuda')}</button>}
  <SupportHelp open={supportOpen} onClose={() => setSupportOpen(false)} askAssistant={askSupport} />

@@ -23,7 +23,7 @@ for (const backendMessage of ['ADMIN_ONLY_OPERATION', 'OPERATION_NOT_ALLOWED', '
       }
     });
     await page.goto('/');
-    await expect(page.locator('.mode')).toContainText('Comunidad · Firebase');
+    await expect(page.locator('.mode')).toContainText('Reportes de la comunidad');
     await page.locator('.map').click({position: {x: 170, y: 150}});
     const detail = page.getByLabel('Detalle opcional');
     await detail.fill('La luminaria de la esquina no funciona desde ayer.');

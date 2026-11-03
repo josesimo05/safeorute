@@ -52,7 +52,7 @@ async function mockedServices(page, context) {
     return route.fulfill(await replies.submission());
   });
   await page.goto('/');
-  await expect(page.locator('.mode')).toContainText('Comunidad · Firebase');
+  await expect(page.locator('.mode')).toContainText('Reportes de la comunidad');
   return {calls, replies};
 }
 

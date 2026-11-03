@@ -365,3 +365,7 @@ body.immersive-map{overflow:hidden;padding:0}
 }
 .guest-identity-fields,.guest-identity-status{margin:16px 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft)}
 .guest-identity-fields p{margin-bottom:0}.report-dialog .primary.wide{margin-top:16px}
+.map-focused>.project-overview{display:none}
+@media(max-width:900px){
+ .has-project-overview>.workspace{height:calc(100dvh - 270px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px))}
+}
