@@ -1,0 +1,14 @@
+.route-reports{min-width:0;margin-block:18px 8px;padding-top:14px;border-top:1px solid var(--line);color:var(--ink)}
+.route-reports h3{margin:0 0 6px;font-size:14px;line-height:1.45}
+.route-reports .route-reports-count{margin:0 0 7px;font-size:12px;font-weight:700}
+.route-reports-help,.route-reports-empty{margin:0 0 10px;font-size:11px;line-height:1.6;color:var(--muted)}
+.route-reports-list{display:grid;gap:8px;min-width:0;margin:0;padding:0;list-style:none}
+.route-reports-list li{min-width:0}
+.route-reports-item{display:block;width:100%;min-height:44px;padding:12px;border:1px solid var(--line);border-radius:10px;text-align:start;color:var(--ink);background:var(--surface);overflow-wrap:anywhere}
+.route-reports-item:hover{background:var(--surface-soft);border-color:var(--brand-teal)}
+.route-reports-item:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+.route-reports-category{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;line-height:1.5}
+.route-reports-category i{flex:none;width:8px;height:8px;border-radius:50%}
+.route-reports-description{display:block;margin-top:6px;font-size:12px;line-height:1.6}
+.route-reports-item small{display:block;margin-top:6px;font-size:10px;line-height:1.5;color:var(--muted)}
+.route-reports-action{display:block;margin-top:8px;font-size:11px;line-height:1.5;color:var(--link);font-weight:700}

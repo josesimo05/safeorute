@@ -31,7 +31,7 @@ test('Geoapify busca direcciones, calcula dos rutas y carga lugares cercanos', a
   await expect(page.getByRole('button', {name: 'Iniciar navegación', exact: true})).toHaveCount(0);
 });
 
-test('el mapa usa Geoapify en claro y oscuro con la atribución del proveedor', async ({page, context}) => {
+test('el tema oscuro conserva la cartografía detallada y la atribución sin invertir los tiles', async ({page, context}) => {
   const calls = await mockGeoapify(context);
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-map-provider', 'geoapify');
@@ -39,8 +39,15 @@ test('el mapa usa Geoapify en claro y oscuro con la atribución del proveedor', 
   await expect(page.locator('.leaflet-control-attribution').getByRole('link', {name: '© Geoapify', exact: true})).toBeVisible();
   await expect(page.locator('.leaflet-control-attribution').getByRole('link', {name: '© OpenMapTiles', exact: true})).toBeVisible();
   await page.getByRole('button', {name: 'Cambiar a tema oscuro', exact: true}).click();
-  await expect.poll(() => calls.styles.includes('dark-matter-yellow-roads')).toBe(true);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  // Both themes use the same tile URL, so Leaflet may reuse its existing tiles
+  // instead of issuing a second request. Check rendered URLs after the theme
+  // change rather than requiring an unnecessary duplicate network request.
+  const renderedStyles = await page.locator('.leaflet-tile-pane img').evaluateAll(nodes =>
+    nodes.map(node => new URL(node.src).pathname.split('/')[3]));
+  expect(renderedStyles.length).toBeGreaterThan(0);
+  expect(renderedStyles.every(style => style === 'osm-carto')).toBe(true);
+  expect(calls.styles.every(style => style === 'osm-carto')).toBe(true);
   expect(await page.locator('.leaflet-tile-pane').evaluate(node => getComputedStyle(node).filter)).toBe('none');
   expect(calls.otherMaps).toEqual([]);
 });

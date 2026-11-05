@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import PwaControls from './PwaControls';
 import ProjectOverview from './ProjectOverview';
+import RouteReports from './RouteReports';
+import ReportReviewPanel from './ReportReviewPanel';
+import GmailSignIn from './GmailSignIn';
 import PlaceSearch from './PlaceSearch';
 import NavigationSession from './NavigationSession';
 import ItsPanel from './ItsPanel';
@@ -13,8 +16,8 @@ import { useI18n } from './LocaleContext';
 import { languages } from './i18n';
 import { countryOptions, normalizeCountry, countryMapView } from './regions';
 import { firebaseErrorMessage } from './firebase-errors';
-import { categories, colors, duplicate, validate, period, routeReportCount, reportLevel } from './logic';
-import { cloud, watch, watchUser, submit, moderate, reset, register, login, logout, askSupport } from './store';
+import { categories, colors, duplicate, validate, period, routeReportCount, reportLevel, approvedRouteReports } from './logic';
+import { cloud, demoMode, configurationError, watch, watchUser, watchModerator, watchReviewQueue, submit, moderate, reviewReport, reset, register, login, loginWithGmail, logout, askSupport } from './store';
 import { hasRouting, getRoutes, nearbyPlaces, similarRoutes, tileUrl, mapProvider, mapAttribution } from './navigation';
 const poiFilters = ['Gasolineras', 'Farmacias', 'Supermercados', 'Hospitales'];
 function localDay(value) {
@@ -99,6 +102,11 @@ export default function App() {
   const [navigationPosition, setNavigationPosition] = useState(null);
   const [mapCenter, setMapCenter] = useState(() => countryMapView(country).center);
   const [itsCameras, setItsCameras] = useState([]);
+  const [canReviewReports, setCanReviewReports] = useState(false);
+  const [reviewRows, setReviewRows] = useState([]);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  const [focusedRouteReport, setFocusedRouteReport] = useState(null);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [locatingMap, setLocatingMap] = useState(false);
   const [locatingReport, setLocatingReport] = useState(false);
@@ -122,8 +130,9 @@ export default function App() {
     pickMode = useRef(null);
   const failedTiles = useRef(new Set());
   useEffect(() => {
-    const stop = watch(setRows, () => setMessage('No se pudo leer Firebase. Comprueba conexión, reglas y configuración.'));
+    const stop = watch(setRows, error => setMessage(firebaseErrorMessage(error, {fallback:'No se pudo leer Firebase. Comprueba conexión, reglas y configuración.'})));
     const unwatch = watchUser(setUser);
+    const unwatchModerator = watchModerator(setCanReviewReports, () => setCanReviewReports(false));
     const net = () => {
       setOnline(navigator.onLine);
       if (navigator.onLine) tiles.current?.redraw();
@@ -133,10 +142,24 @@ export default function App() {
     return () => {
       stop();
       unwatch();
+      unwatchModerator();
       removeEventListener('online', net);
       removeEventListener('offline', net);
     };
   }, []);
+  useEffect(() => {
+    setReviewRows([]);
+    setReviewError('');
+    if (!cloud || !canReviewReports) {setReviewLoading(false); return;}
+    setReviewLoading(true);
+    return watchReviewQueue(next => {setReviewRows(next);setReviewLoading(false);}, error => {
+      setReviewRows([]);setReviewLoading(false);
+      setReviewError(firebaseErrorMessage(error, {fallback:'No se pudo completar la revisión. Inténtalo de nuevo.'}));
+    });
+  }, [canReviewReports]);
+  useEffect(() => {
+    if (tab === 'Moderación' && !demoMode && !canReviewReports) setTab('Explorar');
+  }, [tab, canReviewReports]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.mapProvider = mapProvider;
@@ -325,9 +348,13 @@ export default function App() {
       old?.focus();
     };
   }, [form, account, preferencesOpen]);
-  const visible = rows.filter(r => r.status === 'approved' && (cat === 'Todas' || r.category === cat) && (time === 'Todas' || period(r) === time) && (!since || localDay(r.occurredAt) >= since) && r.description.toLowerCase().includes(search.toLowerCase()));
+  const sharedReports = useMemo(() => rows.filter(r => r.status === 'approved'), [rows]);
+  const visible = useMemo(() => sharedReports.filter(r => (cat === 'Todas' || r.category === cat) && (time === 'Todas' || period(r) === time) && (!since || localDay(r.occurredAt) >= since) && r.description.toLowerCase().includes(search.toLowerCase())), [sharedReports, cat, time, since, search]);
   const pending = rows.filter(r => r.status === 'pending');
   const activeRoute = routes.find(r => r.id === selectedRoute) || routes[0];
+  useEffect(() => {setFocusedRouteReport(null);}, [routes, activeRoute?.id, tab]);
+  const selectedRouteReports = useMemo(() => approvedRouteReports(activeRoute, sharedReports), [activeRoute, sharedReports]);
+  const mappedReports = tab === 'Navegar' ? (activeRoute ? selectedRouteReports : sharedReports) : visible;
   const comparable = useMemo(() => similarRoutes(routes), [routes]);
   const comparableIds = new Set(comparable.map(r => r.id));
   const routePicking = picking && Boolean(pickMode.current);
@@ -341,7 +368,7 @@ export default function App() {
     if (!markers.current) return;
     markers.current.clearLayers();
     if (tab === 'Tráfico ITS') return;
-    visible.forEach(r => {
+    mappedReports.forEach(r => {
       const color = colors[categories.indexOf(r.category)] || colors[5],
         icon = categories[categories.indexOf(r.category)] === 'Poca iluminación' ? '☼' : categories[categories.indexOf(r.category)] === 'Bache' ? '⌁' : '!';
       const node = document.createElement('span');
@@ -361,20 +388,24 @@ export default function App() {
         bubblingMouseEvents: false
       }).bindPopup(popup).addTo(markers.current);
     });
-  }, [rows, cat, time, since, search, language, tab]);
+  }, [mappedReports, language, locale, tab]);
   useEffect(() => {
     clickMode.current = tab === 'Explorar' ? 'report' : 'ignore';
     const frame = requestAnimationFrame(() => {
       map.current?.invalidateSize({
         pan: true, animate: false
       });
-      if (tab !== 'Tráfico ITS' && !picking && !guiding && activeRoute?.points.length) map.current?.fitBounds(activeRoute.points.map(p => [p.latitude, p.longitude]), {
+      if (tab === 'Navegar' && !picking && !guiding && focusedRouteReport) {
+        // Apply explicit incident focus after the mobile panel has resized.
+        map.current?.setView([focusedRouteReport.lat, focusedRouteReport.lng], 17, {animate:false});
+      } else if (tab !== 'Tráfico ITS' && !picking && !guiding && activeRoute?.points.length) map.current?.fitBounds(activeRoute.points.map(p => [p.latitude, p.longitude]), {
         padding: [40, 40],
-        maxZoom: 15
+        maxZoom: 15,
+        animate: false
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [tab, panelExpanded, picking, searchActive, guiding]);
+  }, [tab, panelExpanded, picking, searchActive, guiding, focusedRouteReport]);
   useEffect(() => {
     if (!pointLayer.current) return;
     pointLayer.current.clearLayers();
@@ -403,7 +434,8 @@ export default function App() {
       const bounds = L.latLngBounds(activeRoute.points.map(p => [p.latitude, p.longitude]));
       map.current?.fitBounds(bounds, {
         padding: [55, 55],
-        maxZoom: 15
+        maxZoom: 15,
+        animate: false
       });
     }
   }, [routes, activeRoute?.id]);
@@ -422,7 +454,8 @@ export default function App() {
     }
     if (tab !== 'Tráfico ITS' && origin && destination && !routes.length) map.current?.fitBounds([[origin.lat, origin.lon], [destination.lat, destination.lon]], {
       padding: [45, 45],
-      maxZoom: 15
+      maxZoom: 15,
+      animate: false
     });
   }, [origin, destination]);
   useEffect(() => {
@@ -496,7 +529,7 @@ export default function App() {
       pickMode.current = null;
       setPanelExpanded(true);
       field === 'origin' ? (setOrigin(value), setOriginText('Mi ubicación')) : (setDestination(value), setDestText('Mi ubicación'));
-      map.current?.setView([value.lat, value.lon], 15);
+      map.current?.setView([value.lat, value.lon], 15, {animate:false});
     }, () => {
       if (requestId === locationRequests.current[field]) setMessage('No se pudo obtener la ubicación. Selecciona el punto en el mapa.');
     }, {
@@ -562,7 +595,7 @@ export default function App() {
       setDestination(p);
       setDestText(name);
     }
-    map.current?.setView([p.lat, p.lon], 14);
+    map.current?.setView([p.lat, p.lon], 14, {animate:false});
   }
   async function calculateRoutes(e) {
     e?.preventDefault();
@@ -583,7 +616,6 @@ export default function App() {
       if (!found.length) throw new Error('El servicio no encontró una ruta para esos puntos.');
       setRoutes(found);
       setSelectedRoute(found[0].id);
-      map.current?.setView([origin.lat, origin.lon], 14);
       setMessage(found.length === 1 ? 'Geoapify calculó una ruta.' : `Geoapify calculó ${found.length} rutas distintas.`);
     } catch (e) {
       if (requestId === routeRequest.current) setMessage(e.message);
@@ -717,6 +749,26 @@ export default function App() {
       setBusy(false);
     }
   }
+  async function gmailLogin() {
+    if (busy) return;
+    setAccountError('');
+    setBusy(true);
+    try {
+      await loginWithGmail();
+      setAccount(false);
+      setPassword('');
+      setMessage('Sesión iniciada.');
+    } catch (error) {
+      setAccountError(firebaseErrorMessage(error, {provider:'gmail', fallback:'No se pudo iniciar sesión con Gmail. Inténtalo de nuevo.'}));
+    } finally {setBusy(false);}
+  }
+  async function reviewSharedReport(id, status) {
+    setBusy(true);
+    try {
+      await reviewReport(id, status);
+      setMessage('La revisión se guardó.');
+    } finally {setBusy(false);}
+  }
   async function accountLogout() {
     try {
       await logout();
@@ -731,7 +783,7 @@ export default function App() {
       setMessage('Este navegador no tiene lectura de voz disponible.');
       return;
     }
-    const n = routeReportCount(activeRoute, visible);
+    const n = routeReportCount(activeRoute, sharedReports);
     const text = [tr('Ruta seleccionada.'), tr('Tiempo estimado, {minutes} minutos.', {
       minutes: Math.ceil(activeRoute.seconds / 60)
     }), n ? tr('{count} reportes comunitarios cercanos al trayecto.', {
@@ -825,7 +877,7 @@ export default function App() {
   const mapLegend = <div className="legend">{categories.map((c, i) => <span key={c}><i className="legend-dot" style={{
         background: colors[i]
       }} />{tr(c)}</span>)}<span><i>⛽</i>{tr("Gasolinera")}</span><span><i>✚</i>{tr("Farmacia")}</span><span><i>🛒</i>{tr("Supermercado")}</span><span><i>🏥</i>{tr("Hospital")}</span><span><i className="legend-route" />{tr("Ruta elegida")}</span><span><i className="legend-start">{tr("A")}</i>{tr("Origen")}</span><span><i className="legend-end">{tr("B")}</i>{tr("Destino")}</span></div>;
-  return <div className={`app-shell ${routePicking ? `route-picking route-picking-${pickMode.current}` : ''} ${guiding ? 'guidance-mode' : ''}`}><header><a className="brand" href="/" aria-label={tr("SafeRoute inicio")}><img className="brand-mark" src="/brand-mark.png" alt="" width="38" height="44" /><span className="brand-name" dir="ltr">SafeRoute</span></a><nav aria-label={tr("Secciones")}>{['Explorar', 'Patrones', 'Navegar', 'Tráfico ITS', ...(!cloud ? ['Moderación'] : [])].map(t => <button className={tab === t ? 'active' : ''} key={t} onClick={() => {
+  return <div className={`app-shell ${routePicking ? `route-picking route-picking-${pickMode.current}` : ''} ${guiding ? 'guidance-mode' : ''}`}><header><a className="brand" href="/" aria-label={tr("SafeRoute inicio")}><img className="brand-mark" src="/brand-mark.png" alt="" width="38" height="44" /><span className="brand-name" dir="ltr">SafeRoute</span></a><nav aria-label={tr("Secciones")}>{['Explorar', 'Patrones', 'Navegar', 'Tráfico ITS', ...((demoMode || canReviewReports) ? ['Moderación'] : [])].map(t => <button className={tab === t ? 'active' : ''} key={t} onClick={() => {
           if (t === 'Tráfico ITS') {
             routeRequest.current++;
             locationRequests.current.origin++;
@@ -845,14 +897,14 @@ export default function App() {
           setForm(true);
           setPoint(null);
         }}>{tr("＋ Reportar")}</button></div></header>
- <main className={`${tab === 'Navegar' ? 'is-planning' : ''} ${!panelExpanded || picking ? 'map-focused' : ''} ${tab === 'Explorar' && panelExpanded && !picking ? 'has-project-overview' : ''}`}><div className="intro"><div><span className="eyebrow">{tr("INFORMACIÓN QUE NOS CONECTA")}</span><h1>{tr("Tu ciudad, con más contexto.")}</h1><p>{tr("Consulta reportes comunitarios y compara rutas con más contexto.")}</p><div className="hero-tags"><span>{tr("⌖ Reportes comunitarios")}</span><span>{tr("✦ Rutas con contexto")}</span><span>{tr("◉ Diseñado para móvil")}</span></div></div><div className="mode"><i className={online ? 'dot' : 'dot off'} />{cloud ? tr('Reportes de la comunidad') : tr('Demostración · Datos simulados')}<small>{online ? tr('Con conexión') : tr('Sin conexión')}</small></div></div>
+ <main className={`${tab === 'Navegar' ? 'is-planning' : ''} ${!panelExpanded || picking ? 'map-focused' : ''} ${tab === 'Explorar' && panelExpanded && !picking ? 'has-project-overview' : ''}`}><div className="intro"><div><span className="eyebrow">{tr("INFORMACIÓN QUE NOS CONECTA")}</span><h1>{tr("Tu ciudad, con más contexto.")}</h1><p>{tr("Consulta reportes comunitarios y compara rutas con más contexto.")}</p><div className="hero-tags"><span>{tr("⌖ Reportes comunitarios")}</span><span>{tr("✦ Rutas con contexto")}</span><span>{tr("◉ Diseñado para móvil")}</span></div></div><div className="mode"><i className={online ? 'dot' : 'dot off'} />{cloud ? tr('Reportes de la comunidad') : tr(configurationError ? 'Servicio compartido pendiente de configurar' : 'Demostración · Datos simulados')}<small>{online ? tr('Con conexión') : tr('Sin conexión')}</small></div></div>
  {tab === 'Explorar' && <ProjectOverview />}
  <section className={`workspace ${tab === 'Navegar' ? 'navigation-workspace' : ''} ${panelExpanded ? 'panel-expanded' : 'panel-collapsed'} ${picking ? 'is-picking' : ''} ${searchActive ? 'is-searching' : ''}`}><aside><button type="button" className="panel-toggle" aria-label={panelExpanded && !picking ? tr('Ver mapa completo') : tab === 'Navegar' ? tr('Mostrar planificador') : tab === 'Tráfico ITS' ? tr('Mostrar tráfico ITS') : tr('Mostrar reportes')} aria-controls="workspace-panel" aria-expanded={panelExpanded && !picking} onClick={() => {
             setSearchActive(null);
             setPanelExpanded(v => picking ? true : !v);
             setPicking(false);
             pickMode.current = null;
-          }}><span>{panelExpanded && !picking ? tr('Ver mapa completo') : tab === 'Navegar' ? tr('Mostrar planificador') : tab === 'Tráfico ITS' ? tr('Mostrar tráfico ITS') : tr('Mostrar reportes')}</span></button><div className="panel-content" id="workspace-panel"><div className="aside-title"><span>{tab === 'Explorar' ? tr('Explora los reportes') : tab === 'Patrones' ? tr('Observa los patrones') : tab === 'Navegar' ? tr('Navega con contexto') : tab === 'Tráfico ITS' ? tr('Cámaras de tráfico ITS') : tr('Revisión de prueba')}</span><small>{country === "all" ? tr("Todos los países") : countries.find(item=>item.code===country)?.name}</small></div>
+          }}><span>{panelExpanded && !picking ? tr('Ver mapa completo') : tab === 'Navegar' ? tr('Mostrar planificador') : tab === 'Tráfico ITS' ? tr('Mostrar tráfico ITS') : tr('Mostrar reportes')}</span></button><div className="panel-content" id="workspace-panel"><div className="aside-title"><span>{tab === 'Explorar' ? tr('Explora los reportes') : tab === 'Patrones' ? tr('Observa los patrones') : tab === 'Navegar' ? tr('Navega con contexto') : tab === 'Tráfico ITS' ? tr('Cámaras de tráfico ITS') : tr(demoMode ? 'Revisión de prueba' : 'Reportes pendientes de revisión')}</span><small>{country === "all" ? tr("Todos los países") : countries.find(item=>item.code===country)?.name}</small></div>
  {tab === 'Navegar' && <div className="navigator"><div className="nav-note">{tr("Rutas estimadas con Geoapify y reportes comunitarios aprobados. Sin tráfico en tiempo real.")}</div><label className="planner-country" htmlFor="planner-country">{tr('País de búsqueda')}<select id="planner-country" value={country} onChange={e=>changeCountry(e.target.value)}><option value="all">{tr('Todos los países')}</option>{countries.map(item=><option key={item.code} value={item.code}>{item.name}</option>)}</select></label>{!hasRouting && <div className="setup-note">{tr("Configura Geoapify para buscar direcciones, calcular rutas y encontrar servicios cercanos. La guía del proyecto explica cómo conectar tu clave.")}</div>}<form onSubmit={calculateRoutes}>
  <PlaceSearch id="origin" label="Origen" value={origin?.source === "map" ? tr("Punto seleccionado en el mapa") : origin?.source === "location" ? tr("Mi ubicación") : originText} selected={Boolean(origin)} country={country} bias={searchBias} onChange={text => editPlace('origin', text)} onSelect={result => chooseAddress('origin', result)} onUseLocation={() => useMyPosition('origin')} onFocusChange={active => setSearchActive(active ? 'origin' : null)} onPickOnMap={() => pickOnMap('origin')} />
  <PlaceSearch id="destination" label="Destino" value={destination?.source === "map" ? tr("Punto seleccionado en el mapa") : destination?.source === "location" ? tr("Mi ubicación") : destText} selected={Boolean(destination)} country={country} bias={searchBias} onChange={text => editPlace('destination', text)} onSelect={result => chooseAddress('destination', result)} onUseLocation={() => useMyPosition('destination')} onFocusChange={active => setSearchActive(active ? 'destination' : null)} onPickOnMap={() => pickOnMap('destination')} />
@@ -861,7 +913,7 @@ export default function App() {
  {routes.length > 0 && <><div className="list-title"><b>{tr('{count} rutas disponibles', {
                       count: routes.length
                     })}</b><span>{tr("recomendada y más corta")}</span></div><p className="tiny">{tr("Se destacan las rutas dentro del 30% del menor tiempo estimado. Si la recomendada y la más corta coinciden, se muestra una sola.")}</p><div className="reports">{routes.map((r, i) => {
-                    const n = routeReportCount(r, visible),
+                    const n = routeReportCount(r, sharedReports),
                       fast = Math.min(...routes.map(q => q.seconds)),
                       similar = comparableIds.has(r.id);
                     return <button className={'route-card ' + (selectedRoute === r.id ? 'selected' : '')} key={r.id} onClick={() => setSelectedRoute(r.id)}><span className="route-card-top"><b>{tr(r.name) || tr('Ruta {number}', {
@@ -876,6 +928,7 @@ export default function App() {
                           minutes: Math.ceil((r.seconds - fast) / 60)
                         })}</span></button>;
                   })}</div><button className="primary wide start-navigation" disabled={routeBusy} onClick={startNavigation}>{tr('Iniciar navegación')}</button><p className="tiny">{tr('La ruta seleccionada se mantiene dentro de SafeRoute.')}</p><details className="route-directions"><summary>{tr('Indicaciones de la ruta')}</summary><button onClick={speakRoute}>{tr('🔊 Escuchar resumen')}</button><ol>{activeRoute?.instructions.map((step,index)=><li key={index} dir="auto">{step.text}</li>)}</ol></details></>}
+ <RouteReports route={activeRoute} reports={sharedReports} onFocus={report => {setFocusedRouteReport({lat:report.lat,lng:report.lng});setSearchActive(null);if(window.matchMedia('(max-width:900px)').matches)setPanelExpanded(false);}} />
  </div>}
  <ItsPanel active={tab === 'Tráfico ITS'} country={country} onCamerasChange={setItsCameras} onFocusCamera={camera => {
    if (!Number.isFinite(camera.location?.latitude) || !Number.isFinite(camera.location?.longitude)) return;
@@ -903,17 +956,18 @@ export default function App() {
                         background: colors[i]
                       }} /></div></div>;
                 })}<h2>{tr("Por horario")}</h2>{['Madrugada', 'Mañana', 'Tarde', 'Noche'].map(t => <p key={t}>{tr(t)}<b>{visible.filter(r => period(r) === t).length}</b></p>)}<small>{tr("Frecuencias de la selección actual; no miden el riesgo real.")}</small></div>}
- {tab === 'Moderación' && !cloud && <div className="moderation"><p>{tr("Simulación local para la feria. En Firebase la revisión se realiza desde la consola por el equipo autorizado.")}</p>{pending.map(r => <article key={r.id}><b>{tr(r.category)}</b><p>{r.description}</p><button onClick={() => setRows(moderate(r.id, 'approved'))}>{tr("Aprobar")}</button><button onClick={() => setRows(moderate(r.id, 'rejected'))}>{tr("Rechazar")}</button></article>)}{!pending.length && <p>{tr("No hay reportes pendientes.")}</p>}<button onClick={() => {
+ {tab === 'Moderación' && cloud && canReviewReports && <ReportReviewPanel reports={reviewRows} onReview={reviewSharedReport} loading={reviewLoading} error={reviewError} />}
+ {tab === 'Moderación' && demoMode && <div className="moderation"><p>{tr("Simulación local para la feria. En Firebase la revisión se realiza desde la consola por el equipo autorizado.")}</p>{pending.map(r => <article key={r.id}><b>{tr(r.category)}</b><p>{r.description}</p><button onClick={() => setRows(moderate(r.id, 'approved'))}>{tr("Aprobar")}</button><button onClick={() => setRows(moderate(r.id, 'rejected'))}>{tr("Rechazar")}</button></article>)}{!pending.length && <p>{tr("No hay reportes pendientes.")}</p>}<button onClick={() => {
                   if (confirm(tr('¿Borrar los reportes locales y restaurar los ejemplos?'))) setRows(reset());
                 }}>{tr("Restaurar demostración")}</button></div>}</>}
  </div></aside><div className="map-wrap"><div ref={mapNode} className="map" aria-label={tr("Mapa de reportes comunitarios y rutas")} /><div className="map-label">{picking ? tr('Toca el mapa para elegir {place}', {
               place: tr(pickMode.current === 'origin' ? 'el origen' : 'el destino')
-            }) : tab === 'Navegar' ? tr('Origen A · Destino B') : tab === 'Tráfico ITS' ? tr('Cámaras ITS · ubicaciones de prueba') : tr('Toca para reportar')}</div>{(!online || offlineMap) && <div className="map-offline" role="status"><span>{online ? tr('No se pudo cargar parte del mapa. Puedes reintentarlo.') : tr('El mapa necesita conexión a internet.')}{!cloud && tr(' Tus reportes locales siguen disponibles.')}</span><button type="button" disabled={!online} onClick={() => tiles.current?.redraw()}>{tr("Reintentar mapa")}</button></div>}{tab !== 'Navegar' && tab !== 'Tráfico ITS' && <button className="locate" aria-busy={locatingMap} onClick={locateMap}>{tr("◎ Mi ubicación")}</button>}<details className="map-legend-control"><summary>{tr("Leyenda")}</summary>{tab === 'Tráfico ITS' ? <div className="legend"><span><i className="legend-dot" style={{background:'#F4B942'}} />{tr('Cámara ITS · demostración')}</span></div> : mapLegend}</details>{routePicking && <><div className="picker-crosshair" aria-hidden="true"><span>{pickMode.current === 'origin' ? 'A' : 'B'}</span></div><section className="map-picker" aria-label={tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}><div className="picker-heading"><strong>{tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}</strong><button type="button" onClick={cancelMapPick}>{tr('Cancelar selección')}</button></div><div className="picker-confirm"><p>{tr('Arrastra el mapa y coloca el punto bajo la mira.')}{pickerPoint && <small dir="ltr">{pickerPoint.lat.toFixed(5)}, {pickerPoint.lon.toFixed(5)}</small>}</p><button type="button" className="primary" onClick={confirmMapPick}>{tr(pickMode.current === 'origin' ? 'Confirmar origen' : 'Confirmar destino')}</button></div></section></>}{guiding && activeRoute && <NavigationSession route={activeRoute} onPosition={setNavigationPosition} onStop={stopNavigation} onRecalculate={recalculateNavigation} follow={followPosition} onFollowChange={setFollowPosition} onOverview={() => {
+            }) : tab === 'Navegar' ? tr('Origen A · Destino B') : tab === 'Tráfico ITS' ? tr('Cámaras ITS · ubicaciones de prueba') : tr('Toca para reportar')}</div>{(!online || offlineMap) && <div className="map-offline" role="status"><span>{online ? tr('No se pudo cargar parte del mapa. Puedes reintentarlo.') : tr('El mapa necesita conexión a internet.')}{demoMode && tr(' Tus reportes locales siguen disponibles.')}</span><button type="button" disabled={!online} onClick={() => tiles.current?.redraw()}>{tr("Reintentar mapa")}</button></div>}{tab !== 'Navegar' && tab !== 'Tráfico ITS' && <button className="locate" aria-busy={locatingMap} onClick={locateMap}>{tr("◎ Mi ubicación")}</button>}<details className="map-legend-control"><summary>{tr("Leyenda")}</summary>{tab === 'Tráfico ITS' ? <div className="legend"><span><i className="legend-dot" style={{background:'#F4B942'}} />{tr('Cámara ITS · demostración')}</span></div> : mapLegend}</details>{routePicking && <><div className="picker-crosshair" aria-hidden="true"><span>{pickMode.current === 'origin' ? 'A' : 'B'}</span></div><section className="map-picker" aria-label={tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}><div className="picker-heading"><strong>{tr(pickMode.current === 'origin' ? 'Mover el mapa para elegir el origen' : 'Mover el mapa para elegir el destino')}</strong><button type="button" onClick={cancelMapPick}>{tr('Cancelar selección')}</button></div><div className="picker-confirm"><p>{tr('Arrastra el mapa y coloca el punto bajo la mira.')}{pickerPoint && <small dir="ltr">{pickerPoint.lat.toFixed(5)}, {pickerPoint.lon.toFixed(5)}</small>}</p><button type="button" className="primary" onClick={confirmMapPick}>{tr(pickMode.current === 'origin' ? 'Confirmar origen' : 'Confirmar destino')}</button></div></section></>}{guiding && activeRoute && <NavigationSession route={activeRoute} onPosition={setNavigationPosition} onStop={stopNavigation} onRecalculate={recalculateNavigation} follow={followPosition} onFollowChange={setFollowPosition} onOverview={() => {
   setFollowPosition(false);
   const height=map.current?.getSize().y || 800;
   map.current?.fitBounds(activeRoute.points.map(p=>[p.latitude,p.longitude]), {paddingTopLeft:[30,Math.min(200,height*.27)],paddingBottomRight:[30,Math.min(250,height*.34)],maxZoom:16});
 }} recalculating={routeBusy} />}</div></section>
- <PwaControls online={online} editing={Boolean(supportOpen || preferencesOpen || form || account || busy || locatingMap || locatingReport || picking || routeBusy || guiding || originText || destText || routes.length)} demo={!cloud} />
+ <PwaControls online={online} editing={Boolean(supportOpen || preferencesOpen || form || account || busy || locatingMap || locatingReport || picking || routeBusy || guiding || originText || destText || routes.length)} demo={demoMode} />
  <footer><p>{tr("Los reportes comunitarios no están verificados. SafeRoute no determina si una zona es segura. Conduce y reporta sólo cuando el vehículo esté detenido.")}</p><span>JMMM × Actuana Academy · INTEC STEM</span></footer></main>
  {!guiding && !routePicking && <button type="button" className="support-launcher" aria-label={tr('Ayuda y soporte')} title={tr('Ayuda y soporte')} aria-haspopup="dialog" aria-expanded={supportOpen} onClick={() => {setForm(false);setAccount(false);setPreferencesOpen(false);setSupportOpen(true);}}><span aria-hidden="true">?</span>{tr('Ayuda')}</button>}
  <SupportHelp open={supportOpen} onClose={() => setSupportOpen(false)} askAssistant={askSupport} />
@@ -923,6 +977,7 @@ export default function App() {
   <span className="eyebrow">{tr("TU APORTE CUENTA")}</span><h2 id="report-title">{tr("Registra un incidente")}</h2>
   <p>{tr("No incluyas nombres, rostros, teléfonos ni otros datos personales.")}</p>
   <form onSubmit={send}>
+    {demoMode && <p className="tiny report-demo-notice">{tr('Los reportes de esta demostración no se comparten con otros dispositivos.')}</p>}
     <div className="quick-label">{tr("Categoría")}<small>{tr("elige el tipo y marca el lugar")}</small></div>
     <div className="quick-choices" role="group" aria-label={tr("Categoría")}>
       {categories.map((c, i) => <button type="button" key={c} aria-pressed={category === c} className={category === c ? 'quick-selected' : ''} onClick={() => quickReport(c)}><i style={{background: colors[i]}} />{tr(c)}</button>)}
@@ -937,18 +992,18 @@ export default function App() {
     <div className="assist"><button type="button" onClick={() => {setForm(false);setPicking(true);setTab('Explorar');}}>{tr("Elegir en el mapa")}</button><button type="button" aria-busy={locatingReport} onClick={locateReport}>{tr("Usar mi ubicación")}</button></div>
     <small>{tr("Coordenadas aproximadas. No incluimos tu nombre en reportes públicos.")}</small>
     <GuestIdentityFields status={guestIdentity.status} cedula={cedula} onChange={setCedula} onRetry={guestIdentity.retry} />
-    <button className="primary wide" disabled={busy || guestIdentity.status === 'loading' || guestIdentity.status === 'unavailable'} type="submit">{busy ? tr('Procesando…') : tr('Enviar a revisión')}</button>
+    <button className="primary wide" disabled={Boolean(configurationError) || busy || guestIdentity.status === 'loading' || guestIdentity.status === 'unavailable'} type="submit">{busy ? tr('Procesando…') : tr('Enviar a revisión')}</button>
   </form>
  </section></div>}
- {preferencesOpen && <div className="overlay"><section role="dialog" aria-modal="true" aria-labelledby="preferences-title" className="dialog preferences-dialog"><button className="close" aria-label={tr("Cerrar preferencias")} onClick={() => setPreferencesOpen(false)}>×</button><h2 id="preferences-title">{tr("Idioma y país")}</h2><label>{tr("Idioma de la aplicación")}<select id="app-language" value={language} onChange={e => setLanguage(e.target.value)}>{languages.map(item => <option key={item.code} value={item.code}>{item.nativeName}</option>)}</select></label><p className="tiny">{tr("Versión sin conexión en ocho idiomas.")}</p><label>{tr("País de búsqueda")}<select id="search-country" value={country} onChange={e => changeCountry(e.target.value)}><option value="all">{tr("Todos los países")}</option>{countries.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}</select></label><small>{tr("Cambiar el país borra el origen y el destino actuales.")}</small><p className="tiny">{tr("Los nombres de lugares y los reportes se muestran en su idioma original.")}</p><div className="preferences-account">{user && !user.isAnonymous ? <button onClick={accountLogout}>{tr("Cerrar sesión")}</button> : <button onClick={() => {
+ {preferencesOpen && <div className="overlay"><section role="dialog" aria-modal="true" aria-labelledby="preferences-title" className="dialog preferences-dialog"><button className="close" aria-label={tr("Cerrar preferencias")} onClick={() => setPreferencesOpen(false)}>×</button><h2 id="preferences-title">{tr("Idioma y país")}</h2><label>{tr("Idioma de la aplicación")}<select id="app-language" value={language} onChange={e => setLanguage(e.target.value)}>{languages.map(item => <option key={item.code} value={item.code}>{item.nativeName}</option>)}</select></label><p className="tiny">{tr("Versión sin conexión en ocho idiomas.")}</p><label>{tr("País de búsqueda")}<select id="search-country" value={country} onChange={e => changeCountry(e.target.value)}><option value="all">{tr("Todos los países")}</option>{countries.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}</select></label><small>{tr("Cambiar el país borra el origen y el destino actuales.")}</small><p className="tiny">{tr("Los nombres de lugares y los reportes se muestran en su idioma original.")}</p><p className="tiny">{tr("El mapa conserva su cartografía detallada para mostrar los mismos nombres en ambos temas.")}</p><div className="preferences-account">{user && !user.isAnonymous ? <button onClick={accountLogout}>{tr("Cerrar sesión")}</button> : <button onClick={() => {
             setPreferencesOpen(false);
             setAccountMode('login');
             setAccountError('');
             setAccount(true);
           }}>{tr("Entrar / Crear cuenta")}</button>}</div><button className="primary wide" onClick={() => setPreferencesOpen(false)}>{tr("Guardar preferencias")}</button></section></div>}
- {account && <div className="overlay"><section role="dialog" aria-modal="true" aria-labelledby="account-title" className="dialog account-dialog"><button className="close" aria-label={tr("Cerrar")} onClick={() => setAccount(false)}>×</button><span className="eyebrow">{tr("SAFE ROUTE · TU CUENTA")}</span><h2 id="account-title">{accountMode === 'login' ? tr('Qué bueno verte') : tr('Crea tu cuenta')}</h2><p>{tr("Tu correo no se publica en los reportes comunitarios.")}</p><form onSubmit={accountSubmit}><label>{tr("Correo electrónico")}<input type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder={tr("tu@correo.com")} /></label><label>{tr("Contraseña")}<input type="password" minLength="6" autoComplete={accountMode === 'login' ? 'current-password' : 'new-password'} required value={password} onChange={e => setPassword(e.target.value)} placeholder={tr("Al menos 6 caracteres")} /></label>{accountError && <p className="form-error" role="alert">{tr(accountError)}</p>}<button className="primary wide" disabled={busy || !cloud}>{busy ? tr('Un momento…') : accountMode === 'login' ? tr('Iniciar sesión') : tr('Crear cuenta')}</button>{!cloud && <small className="form-error">{tr("Conecta Firebase y activa el proveedor Correo/contraseña para usar cuentas.")}</small>}</form><button className="text account-switch" onClick={() => {
+ {account && <div className="overlay"><section role="dialog" aria-modal="true" aria-labelledby="account-title" className="dialog account-dialog"><button className="close" aria-label={tr("Cerrar")} onClick={() => setAccount(false)}>×</button><span className="eyebrow">{tr("SAFE ROUTE · TU CUENTA")}</span><h2 id="account-title">{accountMode === 'login' ? tr('Qué bueno verte') : tr('Crea tu cuenta')}</h2><p>{tr("Tu correo no se publica en los reportes comunitarios.")}</p><GmailSignIn onLogin={gmailLogin} busy={busy} disabled={!cloud} />{accountError && <p className="form-error" role="alert">{tr(accountError)}</p>}<details className="account-email-access"><summary>{tr("Acceso con correo y contraseña")}</summary><form onSubmit={accountSubmit}><label>{tr("Correo electrónico")}<input type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder={tr("tu@correo.com")} /></label><label>{tr("Contraseña")}<input type="password" minLength="6" autoComplete={accountMode === 'login' ? 'current-password' : 'new-password'} required value={password} onChange={e => setPassword(e.target.value)} placeholder={tr("Al menos 6 caracteres")} /></label><button className="primary wide" disabled={busy || !cloud}>{busy ? tr('Un momento…') : accountMode === 'login' ? tr('Iniciar sesión') : tr('Crear cuenta')}</button>{!cloud && <small className="form-error">{tr("Conecta Firebase y activa el proveedor Correo/contraseña para usar cuentas.")}</small>}</form><button className="text account-switch" onClick={() => {
           setAccountMode(accountMode === 'login' ? 'register' : 'login');
           setAccountError('');
-        }}>{accountMode === 'login' ? tr('¿No tienes cuenta? Regístrate') : tr('¿Ya tienes cuenta? Inicia sesión')}</button></section></div>}
+        }}>{accountMode === 'login' ? tr('¿No tienes cuenta? Regístrate') : tr('¿Ya tienes cuenta? Inicia sesión')}</button></details></section></div>}
  </div>;
 }

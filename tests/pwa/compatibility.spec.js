@@ -10,7 +10,9 @@ test('busca por nombre, cambia el tema y prepara la navegación dentro de SafeRo
   await expect(page.locator('html')).toHaveAttribute('data-map-provider', 'geoapify');
   await page.getByRole('button', {name: 'Cambiar a tema oscuro', exact: true}).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect.poll(() => calls.styles.includes('dark-matter-yellow-roads')).toBe(true);
+  await expect.poll(() => calls.styles.includes('osm-carto')).toBe(true);
+  await expect(page.locator('.leaflet-tile').first()).toHaveAttribute('src', /\/osm-carto\//);
+  expect(calls.styles.every(style => style === 'osm-carto')).toBe(true);
   await page.getByRole('button', {name: 'Navegar', exact: true}).click();
   const origin = page.getByRole('combobox', {name: 'Origen', exact: true});
   await origin.fill('Parque Independencia');

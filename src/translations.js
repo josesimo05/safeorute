@@ -4,6 +4,7 @@ import itsRows from './translations-its.js';
 import supportRows from './translations-support.js';
 import reportingRows from './translations-reporting.js';
 import overviewRows from './translations-overview.js';
+import sharingRows from './translations-sharing.js';
 
 // Source strings are Spanish. Values are explicit UI copy, never user content.
 // Columns: Spanish, English, French, Portuguese, German, Italian, Arabic, Chinese.
@@ -291,7 +292,7 @@ const pwaRows = [
 ];
 
 const codes = ['es', 'en', 'fr', 'pt', 'de', 'it', 'ar', 'zh'];
-export const translationRows = Object.freeze([...rows, ...pwaRows, ...errorRows, ...navigationRows, ...itsRows, ...supportRows, ...reportingRows, ...overviewRows].map(row => Object.freeze(row)));
+export const translationRows = Object.freeze([...rows, ...pwaRows, ...errorRows, ...navigationRows, ...itsRows, ...supportRows, ...reportingRows, ...overviewRows, ...sharingRows].map(row => Object.freeze(row)));
 export const sourceStrings = Object.freeze(translationRows.map(row => row[0]));
 export const translations = Object.freeze(Object.fromEntries(codes.map((code, index) =>
   [code, Object.freeze(Object.fromEntries(translationRows.map(row => [row[0], row[index]])))])));

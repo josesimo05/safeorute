@@ -2,6 +2,13 @@ rules_version = '2';
 service cloud.firestore {
  match /databases/{database}/documents {
   function signedIn() { return request.auth != null; }
+  function isModerator() {
+   return signedIn()
+    && request.auth.token.email_verified == true
+    && request.auth.token.firebase.sign_in_provider != 'anonymous'
+    && exists(/databases/$(database)/documents/reportModerators/$(request.auth.uid))
+    && get(/databases/$(database)/documents/reportModerators/$(request.auth.uid)).data.active == true;
+  }
   // The opt-in pilot requires guest submissions through the private server API.
   // Its Admin SDK writes bypass client rules; no identity enters public reports.
   function allowedDirectReporter() {
@@ -19,11 +26,54 @@ service cloud.firestore {
     && d.occurredAt is string && d.occurredAt.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*Z$')
     && d.status == 'pending' && d.source == 'community' && d.createdAt == request.time;
   }
+  function publicReportShape(d) {
+   return d.keys().hasOnly(['category','description','lat','lng','occurredAt','status','source','createdAt'])
+    && d.keys().hasAll(['category','description','lat','lng','occurredAt','status','source','createdAt'])
+    && d.category in ['Robo','Intento de robo','Poca iluminación','Espacio abandonado','Bache','Otro']
+    && d.description is string && d.description.size() >= 12 && d.description.size() <= 600
+    && d.lat is number && d.lat >= -90 && d.lat <= 90
+    && d.lng is number && d.lng >= -180 && d.lng <= 180
+    && d.occurredAt is string && d.occurredAt.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*Z$')
+    && d.source == 'community' && d.createdAt is timestamp;
+  }
+  function matchingReview(id, status) {
+   let d = getAfter(/databases/$(database)/documents/reportReviews/$(id)).data;
+   return d.keys().hasOnly(['reportId','moderatorUid','status','reviewedAt'])
+    && d.keys().hasAll(['reportId','moderatorUid','status','reviewedAt'])
+    && d.reportId == id && d.moderatorUid == request.auth.uid
+    && d.status == status && d.reviewedAt == request.time;
+  }
   match /reports/{id} {
-   allow read: if resource.data.status == 'approved';
+   allow read: if resource.data.status == 'approved' || isModerator();
    allow create: if allowedDirectReporter() && validReport(request.resource.data)
     && getAfter(/databases/$(database)/documents/submissionLimits/$(request.auth.uid)).data.lastReport == id
     && getAfter(/databases/$(database)/documents/submissionLimits/$(request.auth.uid)).data.at == request.time;
+   // A review cannot alter location, text, source, or any public fields. The
+   // private append-only audit record must be created in the same operation.
+   allow update: if isModerator() && resource.data.status == 'pending'
+    && request.resource.data.status in ['approved','rejected']
+    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+    && (request.resource.data.status == 'rejected' || publicReportShape(request.resource.data))
+    && !exists(/databases/$(database)/documents/reportReviews/$(id))
+    && matchingReview(id, request.resource.data.status);
+   allow delete: if false;
+  }
+  match /reportModerators/{uid} {
+   allow get: if signedIn() && request.auth.uid == uid;
+   allow list, create, update, delete: if false;
+  }
+  match /reportReviews/{id} {
+   allow read: if isModerator();
+   allow create: if isModerator()
+    && request.resource.data.keys().hasOnly(['reportId','moderatorUid','status','reviewedAt'])
+    && request.resource.data.keys().hasAll(['reportId','moderatorUid','status','reviewedAt'])
+    && request.resource.data.reportId == id
+    && request.resource.data.moderatorUid == request.auth.uid
+    && request.resource.data.status in ['approved','rejected']
+    && request.resource.data.reviewedAt == request.time
+    && get(/databases/$(database)/documents/reports/$(id)).data.status == 'pending'
+    && getAfter(/databases/$(database)/documents/reports/$(id)).data.status == request.resource.data.status
+    && getAfter(/databases/$(database)/documents/reports/$(id)).data.diff(get(/databases/$(database)/documents/reports/$(id)).data).affectedKeys().hasOnly(['status']);
    allow update, delete: if false;
   }
   match /submissionLimits/{uid} {

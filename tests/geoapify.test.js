@@ -337,11 +337,11 @@ test('Arabic and Chinese UI languages use supported routing instructions and ret
   }
 });
 
-test('map themes select official raster styles and missing configuration uses OSM', async () => {
+test('both interface themes preserve the same detailed map labels and missing configuration uses OSM', async () => {
   const {client} = mockClient(() => success({}));
   assert.equal(client.hasRouting, true);
   assert.match(client.tileUrl('light'), /^https:\/\/maps\.geoapify\.com\/v1\/tile\/osm-carto\/\{z\}\/\{x\}\/\{y\}\.png\?apiKey=/);
-  assert.match(client.tileUrl('dark'), /\/tile\/dark-matter-yellow-roads\//);
+  assert.equal(client.tileUrl('dark'), client.tileUrl('light'));
   let requests = 0;
   const missing = createGeoapifyClient({fetchImpl: () => {requests++;}});
   assert.equal(missing.hasRouting, false);

@@ -1,12 +1,29 @@
-export function firebaseErrorMessage(error, {guest = false, fallback = 'No se pudo completar la operación. Inténtalo de nuevo.'} = {}) {
+export function firebaseErrorMessage(error, {guest = false, provider, fallback = 'No se pudo completar la operación. Inténtalo de nuevo.'} = {}) {
   switch (error?.code) {
     case 'auth/admin-restricted-operation':
     case 'auth/operation-not-allowed':
+      if (provider === 'gmail') return 'El acceso con Gmail no está habilitado. Avisa al administrador.';
       return guest
         ? 'No está habilitado el envío como invitado. Inicia sesión o avisa al administrador.'
         : 'El acceso por correo no está habilitado en esta app. Avisa al administrador.';
     case 'auth/configuration-not-found':
       return 'Firebase Authentication no está configurado en este proyecto. Avisa al administrador para activarlo.';
+    case 'firebase/configuration-incomplete':
+    case 'firebase/initialization-failed':
+      return 'La configuración de Firebase está incompleta. Avisa al administrador para conectar la base compartida.';
+    case 'auth/popup-blocked':
+      return 'El navegador bloqueó el acceso. Permite la ventana emergente y vuelve a pulsar Continuar con Gmail.';
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return 'Se canceló el inicio de sesión. Puedes intentarlo otra vez.';
+    case 'auth/account-exists-with-different-credential':
+      return 'Ya existe una cuenta con ese correo. Usa el acceso con correo y contraseña.';
+    case 'moderation/already-reviewed':
+    case 'moderation/report-not-found':
+      return 'Este reporte ya fue revisado. La lista se actualizará automáticamente.';
+    case 'moderation/not-authorized':
+    case 'moderation/session-changed':
+      return 'No tienes permiso para revisar reportes.';
     case 'auth/invalid-api-key':
       return 'La configuración de Firebase no es válida. Avisa al administrador para revisar la clave API.';
     case 'auth/unauthorized-domain':

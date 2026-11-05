@@ -1,0 +1,23 @@
+.report-review-panel{min-width:0;color:var(--ink)}
+.report-review-panel h2{margin:0 0 10px;font-size:18px;line-height:1.35;overflow-wrap:anywhere}
+.report-review-intro,.report-review-loading,.report-review-empty{font-size:12px;line-height:1.6;color:var(--muted)}
+.report-review-intro{margin:0 0 16px}
+.report-review-list{display:grid;gap:12px;min-width:0}
+.report-review-card{min-width:0;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.report-review-card h3{margin:0 0 8px;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.report-review-description{margin:0;font-size:13px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+.report-review-card dl{display:grid;gap:9px;margin:14px 0;font-size:11px;line-height:1.5}
+.report-review-card dl>div{min-width:0}
+.report-review-card dt{margin:0;color:var(--muted)}
+.report-review-card dd{margin:2px 0 0;color:var(--ink);overflow-wrap:anywhere;text-align:start}
+.report-review-actions{display:flex;flex-wrap:wrap;gap:8px}
+.report-review-actions button{flex:1 1 120px;min-width:0;min-height:44px;padding:9px 10px;font-size:12px;line-height:1.4;overflow-wrap:anywhere}
+.report-review-error{margin:12px 0;padding:10px;border:1px solid var(--caution-line);border-radius:8px;background:var(--caution-bg);color:var(--caution-text);font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+.gmail-sign-in{margin:20px 0;min-width:0}
+.gmail-sign-in-button{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:48px;padding:12px 16px;line-height:1.45}
+.gmail-sign-in-button svg{flex:none}
+.gmail-sign-in-button span{min-width:0;overflow-wrap:anywhere}
+.gmail-sign-in p{margin:10px 0 0;font-size:12px;line-height:1.6;color:var(--muted)}
+.account-email-access{margin-top:16px;border-top:1px solid var(--line)}
+.account-email-access>summary{min-height:44px;padding:12px 0;cursor:pointer;font-size:13px;line-height:1.5;color:var(--muted)}
+.report-review-actions button:focus-visible,.gmail-sign-in-button:focus-visible{outline:3px solid var(--focus);outline-offset:3px}

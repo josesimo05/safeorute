@@ -323,9 +323,13 @@ export function createGeoapifyClient({apiKey, fetchImpl = globalThis.fetch} = {}
     });
   }
 
-  function tileUrl(theme) {
+  function tileUrl(_theme) {
     if (!key) return OSM_TILES;
-    const style = theme === 'dark' ? 'dark-matter-yellow-roads' : 'osm-carto';
+    // Keep the same detailed place labels in both interface themes. The dark
+    // raster style omitted POIs visible in osm-carto; the map deliberately
+    // remains light inside the dark UI instead of inverting raster images or
+    // losing place names. The browser can reuse identical tiles on a toggle.
+    const style = 'osm-carto';
     return `https://maps.geoapify.com/v1/tile/${style}/{z}/{x}/{y}.png?apiKey=${encodeURIComponent(key)}`;
   }
 

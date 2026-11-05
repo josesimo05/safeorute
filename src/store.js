@@ -1,29 +1,60 @@
 import {initializeApp} from 'firebase/app';
-import {getAuth,signInAnonymously,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendEmailVerification} from 'firebase/auth';
-import {getFirestore,collection,query,where,onSnapshot,doc,writeBatch,serverTimestamp} from 'firebase/firestore';
+import {getAuth,signInAnonymously,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendEmailVerification,GoogleAuthProvider,signInWithPopup} from 'firebase/auth';
+import {getFirestore,collection,query,where,onSnapshot,doc,writeBatch,serverTimestamp,runTransaction} from 'firebase/firestore';
 import {initializeAppCheck,ReCaptchaV3Provider} from 'firebase/app-check';
 import {seed} from './logic';
 import {firebaseSettings} from './firebase-config';
 import {submitGuestReport} from './guest-identity-client';
+import {eligibleModerator, moderatorIsActive, createReportReviewer} from './report-review';
 const e=import.meta.env;
 const settings=firebaseSettings(e);
-export const cloud=settings.cloud;
+export let cloud=settings.cloud;
+export const demoMode=settings.mode==='demo';
+export let configurationError=settings.configurationError;
 let db,auth;
-if(cloud){const app=initializeApp(settings.config);if(e.VITE_FIREBASE_APPCHECK_SITE_KEY)initializeAppCheck(app,{provider:new ReCaptchaV3Provider(e.VITE_FIREBASE_APPCHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});db=getFirestore(app);auth=getAuth(app);}
+if(cloud){
+  try {
+    const app=initializeApp(settings.config);
+    auth=getAuth(app);db=getFirestore(app);
+    if(e.VITE_FIREBASE_APPCHECK_SITE_KEY)initializeAppCheck(app,{provider:new ReCaptchaV3Provider(e.VITE_FIREBASE_APPCHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});
+  }catch{
+    cloud=false;configurationError='firebase/initialization-failed';
+  }
+}
+const failure=code=>Object.assign(new Error(code),{code});
+const noop=()=>{};
+function requireCloud(){if(!cloud)throw failure(configurationError||'firebase/not-configured');}
+function requireDemo(){if(!demoMode)throw failure(configurationError||'firebase/demo-only');}
 const key='saferoute-demo-v1';
-export function localRows(){try{const s=localStorage.getItem(key);return s?JSON.parse(s):seed();}catch{return seed();}}
-export function watch(onRows,onError){if(!cloud){onRows(localRows());return ()=>{};}return onSnapshot(query(collection(db,'reports'),where('status','==','approved')),s=>onRows(s.docs.map(d=>({id:d.id,...d.data()}))),onError);}
+export function localRows(){if(!demoMode)return [];try{const s=localStorage.getItem(key);return s?JSON.parse(s):seed();}catch{return seed();}}
+export function watch(onRows,onError=noop){
+  if(demoMode){
+    onRows(localRows());
+    const changed=event=>{if(event.key===key||event.key===null)onRows(localRows());};
+    window.addEventListener('storage',changed);
+    return ()=>window.removeEventListener('storage',changed);
+  }
+  if(!cloud){onRows([]);onError(failure(configurationError||'firebase/not-configured'));return noop;}
+  return onSnapshot(query(collection(db,'reports'),where('status','==','approved')),s=>onRows(s.docs.map(d=>({id:d.id,...d.data()}))),onError);
+}
 export function watchUser(callback){if(!cloud){callback(null);return ()=>{};}return onAuthStateChanged(auth,callback);}
-export async function register(email,password){if(!cloud)throw new Error('Conecta Firebase para crear cuentas reales.');const credential=await createUserWithEmailAndPassword(auth,email,password);await sendEmailVerification(credential.user);return credential.user;}
-export async function login(email,password){if(!cloud)throw new Error('Conecta Firebase para iniciar sesión.');return (await signInWithEmailAndPassword(auth,email,password)).user;}
+export async function register(email,password){requireCloud();const credential=await createUserWithEmailAndPassword(auth,email,password);await sendEmailVerification(credential.user);return credential.user;}
+export async function login(email,password){requireCloud();return (await signInWithEmailAndPassword(auth,email,password)).user;}
+export async function loginWithGmail(){
+  requireCloud();
+  const provider=new GoogleAuthProvider();
+  provider.setCustomParameters({prompt:'select_account'});
+  return (await signInWithPopup(auth,provider)).user;
+}
 export async function logout(){if(cloud)await signOut(auth);}
 export async function submit(r, {cedula, useGuestIdentity = false} = {}) {
-  if (!cloud) {
+  if (demoMode) {
     const rows = localRows();
     rows.unshift({...r, id:crypto.randomUUID(), status:'pending', source:'simulated', createdAt:new Date().toISOString()});
     localStorage.setItem(key, JSON.stringify(rows));
     return rows;
   }
+  requireCloud();
   if (!auth.currentUser) await signInAnonymously(auth);
   if (useGuestIdentity) {
     const token = await auth.currentUser.getIdToken();
@@ -41,8 +72,45 @@ export async function submit(r, {cedula, useGuestIdentity = false} = {}) {
   await batch.commit();
   return null;
 }
-export function moderate(id,status){const rows=localRows().map(r=>r.id===id?{...r,status}:r);localStorage.setItem(key,JSON.stringify(rows));return rows;}
-export function reset(){localStorage.removeItem(key);return seed();}
+export function moderate(id,status){requireDemo();const rows=localRows().map(r=>r.id===id?{...r,status}:r);localStorage.setItem(key,JSON.stringify(rows));return rows;}
+export function reset(){requireDemo();localStorage.removeItem(key);return seed();}
+
+export function watchModerator(onFlag,onError=noop){
+  let disposed=false,stopMembership=noop,generation=0;
+  onFlag(false);
+  if(!cloud){if(configurationError)onError(failure(configurationError));return noop;}
+  const stopAuth=onAuthStateChanged(auth,user=>{
+    const activeGeneration=++generation;
+    stopMembership();stopMembership=noop;onFlag(false);
+    if(!eligibleModerator(user))return;
+    stopMembership=onSnapshot(doc(db,'reportModerators',user.uid),snapshot=>{
+      if(!disposed&&generation===activeGeneration)onFlag(auth.currentUser?.uid===user.uid&&moderatorIsActive(auth.currentUser,snapshot.exists()?snapshot.data():null));
+    },()=>{
+      if(!disposed&&generation===activeGeneration){onFlag(false);onError(failure('moderation/role-unavailable'));}
+    });
+  },()=>{if(!disposed){stopMembership();onFlag(false);onError(failure('moderation/role-unavailable'));}});
+  return ()=>{disposed=true;generation++;stopMembership();stopAuth();};
+}
+
+export function watchReviewQueue(onRows,onError=noop){
+  if(!cloud||!eligibleModerator(auth.currentUser)){
+    onRows([]);onError(failure(configurationError||'moderation/not-authorized'));return noop;
+  }
+  return onSnapshot(query(collection(db,'reports'),where('status','==','pending')),snapshot=>{
+    onRows(snapshot.docs.map(document=>({id:document.id,...document.data()})));
+  },error=>{onRows([]);onError(failure(error?.code||'moderation/queue-unavailable'));});
+}
+
+export async function reviewReport(reportId,nextStatus){
+  requireCloud();
+  const review=createReportReviewer({
+    currentUser:()=>auth.currentUser,
+    reference:(name,id)=>doc(db,name,id),
+    transaction:operation=>runTransaction(db,operation),
+    timestamp:serverTimestamp,
+  });
+  return review(reportId,nextStatus);
+}
 export async function analyze(description){if(!cloud)throw new Error('La API de IA requiere Firebase y una clave configurada en Vercel.');if(!auth.currentUser)await signInAnonymously(auth);const token=await auth.currentUser.getIdToken();const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({description})});if(!res.ok)throw new Error('No se pudo consultar la IA. Revisa la configuración o intenta luego.');return res.json();}
 
 export async function askSupport({message,language,signal}) {

@@ -10,7 +10,10 @@ export const defaultFirebaseConfig = Object.freeze({
 });
 
 export function firebaseSettings(env = {}) {
-  if (env.VITE_DEMO_MODE === 'true') return {cloud: false, config: null};
+  // Public production builds must share reports even if an old Vercel setting
+  // still says VITE_DEMO_MODE=true. A deployable demo uses --mode demo explicitly.
+  const demo = env.MODE === 'demo' || (env.MODE !== 'production' && env.VITE_DEMO_MODE === 'true');
+  if (demo) return {mode: 'demo', cloud: false, config: null, configurationError: ''};
   const fields = {
     apiKey: env.VITE_FIREBASE_API_KEY,
     authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -19,9 +22,21 @@ export function firebaseSettings(env = {}) {
   };
   // A different project must supply its own complete web configuration.
   // Do not accidentally mix its project ID with SafeRoute's API key/app ID.
-  const overridden = Object.values(fields).some(value => value?.trim());
-  const config = overridden
-    ? Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, value?.trim() || '']))
-    : {...defaultFirebaseConfig};
-  return {cloud: Object.values(config).every(Boolean), config};
+  const overridden = Object.values(fields).some(value => value != null &&
+    (typeof value !== 'string' || value.trim() !== ''));
+  const provided = Object.entries(fields).filter(([,value]) => value != null &&
+    (typeof value !== 'string' || value.trim() !== ''));
+  const sameDefaultProject = provided.every(([key,value]) =>
+    typeof value === 'string' && value.trim() === defaultFirebaseConfig[key]);
+  // Completing matching fragments of our own public project is safe. Never
+  // combine a partial different project/key/domain with these defaults.
+  const config = !overridden || sameDefaultProject
+    ? {...defaultFirebaseConfig}
+    : Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, typeof value === 'string' ? value.trim() : '']));
+  // Invalid production configuration must never turn a successful submission
+  // into browser-local demo data that other people cannot receive.
+  if (!Object.values(config).every(Boolean)) {
+    return {mode: 'invalid', cloud: false, config: null, configurationError: 'firebase/configuration-incomplete'};
+  }
+  return {mode: 'cloud', cloud: true, config, configurationError: ''};
 }
