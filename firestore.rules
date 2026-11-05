@@ -43,19 +43,31 @@ service cloud.firestore {
     && d.reportId == id && d.moderatorUid == request.auth.uid
     && d.status == status && d.reviewedAt == request.time;
   }
+  function matchingWithdrawal(id) {
+   let d = getAfter(/databases/$(database)/documents/reportWithdrawals/$(id)).data;
+   return d.keys().hasOnly(['reportId','moderatorUid','status','withdrawnAt'])
+    && d.keys().hasAll(['reportId','moderatorUid','status','withdrawnAt'])
+    && d.reportId == id && d.moderatorUid == request.auth.uid
+    && d.status == 'withdrawn' && d.withdrawnAt == request.time;
+  }
   match /reports/{id} {
    allow read: if resource.data.status == 'approved' || isModerator();
    allow create: if allowedDirectReporter() && validReport(request.resource.data)
     && getAfter(/databases/$(database)/documents/submissionLimits/$(request.auth.uid)).data.lastReport == id
     && getAfter(/databases/$(database)/documents/submissionLimits/$(request.auth.uid)).data.at == request.time;
-   // A review cannot alter location, text, source, or any public fields. The
-   // private append-only audit record must be created in the same operation.
-   allow update: if isModerator() && resource.data.status == 'pending'
-    && request.resource.data.status in ['approved','rejected']
+   // Review and withdrawal can change only status, with their own private,
+   // append-only audit record created atomically. A prior review is immutable.
+   allow update: if isModerator()
     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
-    && (request.resource.data.status == 'rejected' || publicReportShape(request.resource.data))
-    && !exists(/databases/$(database)/documents/reportReviews/$(id))
-    && matchingReview(id, request.resource.data.status);
+    && ((resource.data.status == 'pending'
+      && request.resource.data.status in ['approved','rejected']
+      && (request.resource.data.status == 'rejected' || publicReportShape(request.resource.data))
+      && !exists(/databases/$(database)/documents/reportReviews/$(id))
+      && matchingReview(id, request.resource.data.status))
+     || (resource.data.status == 'approved'
+      && request.resource.data.status == 'withdrawn'
+      && !exists(/databases/$(database)/documents/reportWithdrawals/$(id))
+      && matchingWithdrawal(id)));
    allow delete: if false;
   }
   match /reportModerators/{uid} {
@@ -73,6 +85,20 @@ service cloud.firestore {
     && request.resource.data.reviewedAt == request.time
     && get(/databases/$(database)/documents/reports/$(id)).data.status == 'pending'
     && getAfter(/databases/$(database)/documents/reports/$(id)).data.status == request.resource.data.status
+    && getAfter(/databases/$(database)/documents/reports/$(id)).data.diff(get(/databases/$(database)/documents/reports/$(id)).data).affectedKeys().hasOnly(['status']);
+   allow update, delete: if false;
+  }
+  match /reportWithdrawals/{id} {
+   allow read: if isModerator();
+   allow create: if isModerator()
+    && request.resource.data.keys().hasOnly(['reportId','moderatorUid','status','withdrawnAt'])
+    && request.resource.data.keys().hasAll(['reportId','moderatorUid','status','withdrawnAt'])
+    && request.resource.data.reportId == id
+    && request.resource.data.moderatorUid == request.auth.uid
+    && request.resource.data.status == 'withdrawn'
+    && request.resource.data.withdrawnAt == request.time
+    && get(/databases/$(database)/documents/reports/$(id)).data.status == 'approved'
+    && getAfter(/databases/$(database)/documents/reports/$(id)).data.status == 'withdrawn'
     && getAfter(/databases/$(database)/documents/reports/$(id)).data.diff(get(/databases/$(database)/documents/reports/$(id)).data).affectedKeys().hasOnly(['status']);
    allow update, delete: if false;
   }

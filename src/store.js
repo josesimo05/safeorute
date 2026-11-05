@@ -5,7 +5,7 @@ import {initializeAppCheck,ReCaptchaV3Provider} from 'firebase/app-check';
 import {seed} from './logic';
 import {firebaseSettings} from './firebase-config';
 import {submitGuestReport} from './guest-identity-client';
-import {eligibleModerator, moderatorIsActive, createReportReviewer} from './report-review';
+import {eligibleModerator, moderatorIsActive, createReportReviewer, createReportWithdrawer} from './report-review';
 const e=import.meta.env;
 const settings=firebaseSettings(e);
 export let cloud=settings.cloud;
@@ -110,6 +110,16 @@ export async function reviewReport(reportId,nextStatus){
     timestamp:serverTimestamp,
   });
   return review(reportId,nextStatus);
+}
+export async function withdrawReport(reportId){
+  requireCloud();
+  const withdraw=createReportWithdrawer({
+    currentUser:()=>auth.currentUser,
+    reference:(name,id)=>doc(db,name,id),
+    transaction:operation=>runTransaction(db,operation),
+    timestamp:serverTimestamp,
+  });
+  return withdraw(reportId);
 }
 export async function analyze(description){if(!cloud)throw new Error('La API de IA requiere Firebase y una clave configurada en Vercel.');if(!auth.currentUser)await signInAnonymously(auth);const token=await auth.currentUser.getIdToken();const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({description})});if(!res.ok)throw new Error('No se pudo consultar la IA. Revisa la configuración o intenta luego.');return res.json();}
 

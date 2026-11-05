@@ -1,4 +1,4 @@
-export function firebaseErrorMessage(error, {guest = false, provider, fallback = 'No se pudo completar la operación. Inténtalo de nuevo.'} = {}) {
+export function firebaseErrorMessage(error, {guest = false, provider, moderation = false, fallback = 'No se pudo completar la operación. Inténtalo de nuevo.'} = {}) {
   switch (error?.code) {
     case 'auth/admin-restricted-operation':
     case 'auth/operation-not-allowed':
@@ -21,6 +21,9 @@ export function firebaseErrorMessage(error, {guest = false, provider, fallback =
     case 'moderation/already-reviewed':
     case 'moderation/report-not-found':
       return 'Este reporte ya fue revisado. La lista se actualizará automáticamente.';
+    case 'moderation/not-published':
+    case 'moderation/already-withdrawn':
+      return 'Este reporte ya no está publicado. La lista se actualizará automáticamente.';
     case 'moderation/not-authorized':
     case 'moderation/session-changed':
       return 'No tienes permiso para revisar reportes.';
@@ -52,6 +55,7 @@ export function firebaseErrorMessage(error, {guest = false, provider, fallback =
       return 'No se pudo conectar con el servicio. Revisa tu conexión e inténtalo de nuevo.';
     case 'permission-denied':
     case 'firestore/permission-denied':
+      if (moderation) return 'No tienes permiso para revisar reportes.';
       return 'No tienes permiso para guardar el reporte. Inicia sesión o avisa al administrador.';
     default:
       // Backend messages can contain credentials or internal details.

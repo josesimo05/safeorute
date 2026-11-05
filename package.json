@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "node --test tests/*.test.js",
     "test:rules": "node --test tests/rules/*.test.mjs",
+    "test:moderation": "playwright test --config playwright.moderation.config.js",
     "test:pwa": "playwright test",
     "test:firebase": "playwright test --config playwright.firebase.config.js"
   },

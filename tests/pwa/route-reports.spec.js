@@ -95,7 +95,7 @@ for (const viewport of [
   if (viewport.name === 'móvil') await page.screenshot({path:test.info().outputPath('incident-focused-mobile.png')});
 });
 
-test('una actualización de datos añade contexto a la ruta activa sin recargar ni recalcular', async ({page, context}) => {
+test('publicar y retirar un reporte actualiza la ruta activa sin recargar ni recalcular', async ({page, context}) => {
   const calls = await mockGeoapify(context);
   await page.goto('/');
   await page.getByRole('combobox', {name:'Categoría', exact:true}).selectOption('Robo');
@@ -126,6 +126,21 @@ test('una actualización de datos añade contexto a la ruta activa sin recargar 
     await expect(page.locator('.route-card.selected')).toContainText('Recomendada');
     await expect(page.locator('.route-card.selected .route-risk')).toContainText('3 reportes a 150 m');
     await expect(nearby).not.toContainText(reports[3].description);
+    expect(calls.preferences).toHaveLength(2);
+    expect(navigations).toBe(0);
+
+    await otherTab.evaluate(id => {
+      const key = 'saferoute-demo-v1';
+      const current = JSON.parse(localStorage.getItem(key));
+      localStorage.setItem(key, JSON.stringify(current.map(report => report.id === id
+        ? {...report, status:'withdrawn'} : report)));
+    }, published.id);
+    await expect(nearby.locator('.route-reports-item')).toHaveCount(2);
+    await expect(nearby).not.toContainText(published.description);
+    await expect(nearby.getByRole('status')).toHaveText('2 reportes a 150 m');
+    await expect(page.locator('.report-pin')).toHaveCount(2);
+    await expect(page.locator('.route-card.selected')).toContainText('Recomendada');
+    await expect(page.locator('.route-card.selected .route-risk')).toContainText('2 reportes a 150 m');
     expect(calls.preferences).toHaveLength(2);
     expect(navigations).toBe(0);
   } finally {

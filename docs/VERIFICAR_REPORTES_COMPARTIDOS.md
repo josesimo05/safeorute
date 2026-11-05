@@ -58,11 +58,21 @@ La suite exige `FIRESTORE_EMULATOR_HOST` explícito con host local, rechaza dest
 11. Revocar una membresía impide revisiones posteriores aunque el token siga siendo válido.
 12. La política opcional de cédula obligatoria cierra la escritura anónima directa; las colecciones privadas siguen sin exposición pública.
 13. Un cliente no puede crear directamente un reporte aprobado.
+14. Retirar un aprobado mediante una transacción real elimina ese reporte de la suscripción de otro cliente y del contexto de su ruta, sin cambiar la geometría. El estado queda `withdrawn`; la aprobación original de `reportReviews` permanece intacta.
+15. `reportWithdrawals` es privado e inmutable. El cliente no puede borrar el reporte, modificar/sobrescribir la retirada ni alterar la revisión anterior.
+16. Visitantes, sesiones anónimas, cuentas sin rol, sin correo verificado o con membresía inactiva no pueden retirar, incluso adjuntando una auditoría.
+17. La retirada exige una auditoría coincidente en la misma operación y rechaza cambios de texto, coordenadas, campos adicionales, autor o fecha de la decisión.
+18. Un pendiente, rechazado o ya retirado no se puede retirar. Un retirado no se puede volver a publicar desde el cliente, ni creando otra auditoría de aprobación.
+19. Dos retiradas concurrentes producen un solo ganador; la auditoría corresponde a su UID y conserva la aprobación original.
+20. Revocar la membresía bloquea también nuevas retiradas aunque el token continúe vigente.
+21. Los aprobados antiguos publicados manualmente desde Firebase Console pueden retirarse sin inventar ni sobrescribir una revisión previa. El documento original se conserva de forma privada y la retirada solo registra los cuatro campos de auditoría.
+
+La suscripción compara instantáneas confirmadas por el servidor (`fromCache == false`) para evitar confundir un resultado inicial parcial de la caché del SDK con el conjunto publicado completo. En una carrera, el segundo intento puede devolver `moderation/already-withdrawn` o `permission-denied`: lo exigido es una única retirada válida y una auditoría inmutable del ganador.
 
 La comprobación de UI —marcadores, lista de incidentes y filtros de Exploración independientes— corresponde además a las pruebas de navegador. Este test valida comunicación y permisos reales del emulador, no precisión de rutas ni funcionamiento de una instancia de producción.
 
-La ejecución reproducida desde el repositorio con las reglas actuales terminó con **13 pruebas aprobadas, 0 fallidas y 0 omitidas** mediante `npm run test:rules`. Incluye el envío anónimo pendiente, la aprobación atómica y la recepción en vivo por un segundo cliente independiente. El caso con campos privados adicionales comprueba que el esquema impide publicarlos; el filtrado de teléfonos o correos dentro de texto libre depende además de la validación de la aplicación y la revisión humana, y no debe presentarse como una garantía de las reglas.
+La ejecución reproducida desde el repositorio con las reglas actuales terminó con **21 pruebas aprobadas, 0 fallidas y 0 omitidas** mediante `npm run test:rules`. Incluye el envío anónimo pendiente, la aprobación atómica, la recepción en vivo por un segundo cliente independiente y la retirada posterior con desaparición del contexto de su ruta sin recalcularla. El caso con campos privados adicionales comprueba que el esquema impide publicarlos; el filtrado de teléfonos o correos dentro de texto libre depende además de la validación de la aplicación y la revisión humana, y no debe presentarse como una garantía de las reglas.
 
 ## Activación real pendiente de la cuenta propietaria
 
-Publicar el código en GitHub/Vercel no publica por sí mismo las reglas de Firestore, no habilita Google como proveedor ni crea moderadores. Antes de afirmar que la revisión opera en producción, el propietario debe aplicar los pasos de [ACTIVAR_REVISION.md](ACTIVAR_REVISION.md), revisar el contenido de las reglas y probar un reporte real autorizado desde dos dispositivos. No convertir todos los pendientes en aprobados automáticamente.
+Publicar el código en GitHub/Vercel no publica por sí mismo las reglas de Firestore, no habilita Google como proveedor ni crea moderadores. Antes de afirmar que la revisión opera en producción, el propietario debe aplicar los pasos de [ACTIVAR_REVISION.md](ACTIVAR_REVISION.md), revisar el contenido de las reglas y probar un reporte real autorizado desde dos dispositivos, incluida su retirada desde Moderación. Las reglas de `reportWithdrawals` son nuevas y deben publicarse también; un despliegue del frontend no las activa. No convertir todos los pendientes en aprobados automáticamente.

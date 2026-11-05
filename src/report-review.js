@@ -59,3 +59,42 @@ export function createReportReviewer({currentUser, reference, transaction, times
     return {id:reportId, status:nextStatus};
   };
 }
+
+export function prepareReportWithdrawal({reportId, report, moderatorUid, withdrawnAt}) {
+  if (!safeId(reportId) || !safeId(moderatorUid) || withdrawnAt === undefined) throw fail('moderation/invalid-request');
+  if (report?.status === 'withdrawn') throw fail('moderation/already-withdrawn');
+  if (report?.status !== 'approved') throw fail('moderation/not-published');
+  // Retirement must also work for legacy records published from the Console.
+  // No public content is changed and no report text enters the private audit.
+  return {
+    patch: {status: 'withdrawn'},
+    audit: {reportId, moderatorUid, status: 'withdrawn', withdrawnAt},
+  };
+}
+
+export function createReportWithdrawer({currentUser, reference, transaction, timestamp}) {
+  if (![currentUser,reference,transaction,timestamp].every(value => typeof value === 'function')) throw fail('moderation/invalid-adapter');
+  return async function withdrawReport(reportId) {
+    const user = currentUser();
+    if (!eligibleModerator(user)) throw fail('moderation/not-authorized');
+    if (!safeId(reportId)) throw fail('moderation/invalid-request');
+    const uid = user.uid;
+    const membershipRef = reference('reportModerators', uid);
+    const reportRef = reference('reports', reportId);
+    const withdrawalRef = reference('reportWithdrawals', reportId);
+    await transaction(async tx => {
+      const [membership, report, withdrawal] = await Promise.all([
+        tx.get(membershipRef), tx.get(reportRef), tx.get(withdrawalRef),
+      ]);
+      const activeUser = currentUser();
+      if (activeUser?.uid !== uid) throw fail('moderation/session-changed');
+      if (!moderatorIsActive(activeUser, membership.exists() ? membership.data() : null)) throw fail('moderation/not-authorized');
+      if (!report.exists()) throw fail('moderation/report-not-found');
+      if (withdrawal.exists()) throw fail('moderation/already-withdrawn');
+      const update = prepareReportWithdrawal({reportId, report:report.data(), moderatorUid:uid, withdrawnAt:timestamp()});
+      tx.update(reportRef, update.patch);
+      tx.set(withdrawalRef, update.audit);
+    });
+    return {id:reportId, status:'withdrawn'};
+  };
+}

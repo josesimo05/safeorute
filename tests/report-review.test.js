@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {eligibleModerator, moderatorIsActive, prepareReportReview, createReportReviewer} from '../src/report-review.js';
+import {eligibleModerator, moderatorIsActive, prepareReportReview, createReportReviewer, prepareReportWithdrawal, createReportWithdrawer} from '../src/report-review.js';
 
 const account = uid => ({uid,isAnonymous:false,emailVerified:true});
 const report = () => ({category:'Otro',description:'Semáforo apagado junto a la intersección.',lat:18.476,lng:-69.943,
@@ -44,6 +44,9 @@ class MemoryReviews {
   };
   reviewer(currentUser=()=>account('mod-1')) {
     return createReportReviewer({currentUser,reference:this.reference,transaction:this.transaction,timestamp:()=>({serverTimestamp:true})});
+  }
+  withdrawer(currentUser=()=>account('mod-1')) {
+    return createReportWithdrawer({currentUser,reference:this.reference,transaction:this.transaction,timestamp:()=>({serverTimestamp:true})});
   }
 }
 
@@ -134,4 +137,100 @@ test('unsafe pending text or legacy private fields can be rejected without publi
   assert.deepEqual(Object.keys(audit).sort(),['moderatorUid','reportId','reviewedAt','status']);
   assert.equal(JSON.stringify(audit).includes('809'),false);
   assert.equal(JSON.stringify(audit).includes('private@example.test'),false);
+});
+
+test('withdrawal changes only publication status and preserves the original approval audit', async () => {
+  const db=new MemoryReviews();
+  const approved={...report(),status:'approved'};
+  const originalReview={reportId:'report-1',moderatorUid:'mod-2',status:'approved',reviewedAt:{seconds:1767261600}};
+  db.documents.set('reports/report-1',approved);
+  db.documents.set('reportReviews/report-1',originalReview);
+  assert.deepEqual(await db.withdrawer()('report-1'),{id:'report-1',status:'withdrawn'});
+  assert.deepEqual(db.documents.get('reports/report-1'),{...approved,status:'withdrawn'});
+  assert.deepEqual(db.documents.get('reportReviews/report-1'),originalReview);
+  assert.deepEqual(db.documents.get('reportWithdrawals/report-1'),{
+    reportId:'report-1',moderatorUid:'mod-1',status:'withdrawn',withdrawnAt:{serverTimestamp:true},
+  });
+  assert.deepEqual(db.writes[0].map(write=>({type:write.type,path:write.path})),[
+    {type:'update',path:'reports/report-1'}, {type:'set',path:'reportWithdrawals/report-1'},
+  ]);
+});
+
+test('withdrawal can hide legacy Console-published records without copying their content to audit', async () => {
+  const db=new MemoryReviews();
+  const legacy={status:'approved',description:'Contenido antiguo con 809-555-1234.',privateEmail:'private@example.test'};
+  db.documents.set('reports/report-1',legacy);
+  await db.withdrawer()('report-1');
+  assert.deepEqual(db.documents.get('reports/report-1'),{...legacy,status:'withdrawn'});
+  assert.equal(db.documents.has('reportReviews/report-1'),false);
+  const audit=db.documents.get('reportWithdrawals/report-1');
+  assert.deepEqual(Object.keys(audit).sort(),['moderatorUid','reportId','status','withdrawnAt']);
+  assert.equal(JSON.stringify(audit).includes('809'),false);
+  assert.equal(JSON.stringify(audit).includes('private@example.test'),false);
+});
+
+test('withdrawal rejects unpublished, already withdrawn, missing, and invalid report identifiers', async () => {
+  for(const status of ['pending','rejected','withdrawn']){
+    const db=new MemoryReviews();db.documents.set('reports/report-1',{...report(),status});
+    await assert.rejects(db.withdrawer()('report-1'),failure(status==='withdrawn'?'moderation/already-withdrawn':'moderation/not-published'));
+    assert.equal(db.writes.length,0);
+  }
+  const db=new MemoryReviews();
+  await assert.rejects(db.withdrawer()('missing'),failure('moderation/report-not-found'));
+  await assert.rejects(db.withdrawer()('../invalid'),failure('moderation/invalid-request'));
+  const input={reportId:'report-1',report:{status:'approved'},moderatorUid:'mod-1',withdrawnAt:{serverTimestamp:true}};
+  assert.throws(()=>prepareReportWithdrawal({...input,withdrawnAt:undefined}),failure('moderation/invalid-request'));
+  assert.throws(()=>prepareReportWithdrawal({...input,moderatorUid:'../invalid'}),failure('moderation/invalid-request'));
+  assert.throws(()=>createReportWithdrawer({}),failure('moderation/invalid-adapter'));
+  assert.equal(db.writes.length,0);
+});
+
+test('withdrawal requires a verified non-anonymous active moderator', async () => {
+  for(const user of [null,{...account('mod-1'),emailVerified:false},{...account('mod-1'),isAnonymous:true},account('unknown')]){
+    const db=new MemoryReviews();db.documents.set('reports/report-1',{...report(),status:'approved'});
+    await assert.rejects(db.withdrawer(()=>user)('report-1'),failure('moderation/not-authorized'));
+    assert.equal(db.writes.length,0);
+  }
+  const db=new MemoryReviews();db.documents.set('reports/report-1',{...report(),status:'approved'});
+  db.documents.set('reportModerators/mod-1',{active:false});
+  await assert.rejects(db.withdrawer()('report-1'),failure('moderation/not-authorized'));
+  assert.equal(db.writes.length,0);
+});
+
+test('concurrent withdrawals have one winner and cannot overwrite the first withdrawal audit', async () => {
+  const db=new MemoryReviews();db.documents.set('reports/report-1',{...report(),status:'approved'});
+  const results=await Promise.allSettled([db.withdrawer()('report-1'),db.withdrawer(()=>account('mod-2'))('report-1')]);
+  assert.equal(results.filter(result=>result.status==='fulfilled').length,1);
+  assert.equal(results.find(result=>result.status==='rejected').reason.code,'moderation/already-withdrawn');
+  assert.equal(db.writes.length,1);
+  assert.equal(db.documents.get('reportWithdrawals/report-1').moderatorUid,'mod-1');
+  await assert.rejects(db.reviewer()('report-1','approved'),failure('moderation/already-reviewed'));
+  assert.equal(db.documents.get('reports/report-1').status,'withdrawn');
+});
+
+test('withdrawal checks role revocation again on transaction retry', async () => {
+  const db=new MemoryReviews();db.documents.set('reports/report-1',{...report(),status:'approved'});
+  db.retry=()=>db.documents.set('reportModerators/mod-1',{active:false});
+  await assert.rejects(db.withdrawer()('report-1'),failure('moderation/not-authorized'));
+  assert.equal(db.writes.length,0);
+  assert.equal(db.documents.get('reports/report-1').status,'approved');
+  assert.equal(db.documents.has('reportWithdrawals/report-1'),false);
+});
+
+test('withdrawal does not use a previous account after a session change', async () => {
+  const db=new MemoryReviews();db.documents.set('reports/report-1',{...report(),status:'approved'});
+  let user=account('mod-1');
+  db.onRead=ref=>{if(ref.path.startsWith('reportWithdrawals/'))user=account('mod-2');};
+  await assert.rejects(db.withdrawer(()=>user)('report-1'),failure('moderation/session-changed'));
+  assert.equal(db.writes.length,0);
+  assert.equal(db.documents.get('reports/report-1').status,'approved');
+});
+
+test('a failed withdrawal commit leaves the publication and its audit unchanged', async () => {
+  const db=new MemoryReviews();db.documents.set('reports/report-1',{...report(),status:'approved'});
+  db.failCommit=true;
+  await assert.rejects(db.withdrawer()('report-1'));
+  assert.equal(db.documents.get('reports/report-1').status,'approved');
+  assert.equal(db.documents.has('reportWithdrawals/report-1'),false);
+  assert.equal(db.writes.length,0);
 });

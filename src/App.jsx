@@ -17,7 +17,7 @@ import { languages } from './i18n';
 import { countryOptions, normalizeCountry, countryMapView } from './regions';
 import { firebaseErrorMessage } from './firebase-errors';
 import { categories, colors, duplicate, validate, period, routeReportCount, reportLevel, approvedRouteReports } from './logic';
-import { cloud, demoMode, configurationError, watch, watchUser, watchModerator, watchReviewQueue, submit, moderate, reviewReport, reset, register, login, loginWithGmail, logout, askSupport } from './store';
+import { cloud, demoMode, configurationError, watch, watchUser, watchModerator, watchReviewQueue, submit, moderate, reviewReport, withdrawReport, reset, register, login, loginWithGmail, logout, askSupport } from './store';
 import { hasRouting, getRoutes, nearbyPlaces, similarRoutes, tileUrl, mapProvider, mapAttribution } from './navigation';
 const poiFilters = ['Gasolineras', 'Farmacias', 'Supermercados', 'Hospitales'];
 function localDay(value) {
@@ -769,6 +769,13 @@ export default function App() {
       setMessage('La revisión se guardó.');
     } finally {setBusy(false);}
   }
+  async function withdrawSharedReport(id) {
+    setBusy(true);
+    try {
+      await withdrawReport(id);
+      setMessage('El reporte se retiró del mapa y las rutas.');
+    } finally {setBusy(false);}
+  }
   async function accountLogout() {
     try {
       await logout();
@@ -956,7 +963,7 @@ export default function App() {
                         background: colors[i]
                       }} /></div></div>;
                 })}<h2>{tr("Por horario")}</h2>{['Madrugada', 'Mañana', 'Tarde', 'Noche'].map(t => <p key={t}>{tr(t)}<b>{visible.filter(r => period(r) === t).length}</b></p>)}<small>{tr("Frecuencias de la selección actual; no miden el riesgo real.")}</small></div>}
- {tab === 'Moderación' && cloud && canReviewReports && <ReportReviewPanel reports={reviewRows} onReview={reviewSharedReport} loading={reviewLoading} error={reviewError} />}
+ {tab === 'Moderación' && cloud && canReviewReports && <ReportReviewPanel reports={reviewRows} approvedReports={sharedReports} onReview={reviewSharedReport} onWithdraw={withdrawSharedReport} loading={reviewLoading} error={reviewError} />}
  {tab === 'Moderación' && demoMode && <div className="moderation"><p>{tr("Simulación local para la feria. En Firebase la revisión se realiza desde la consola por el equipo autorizado.")}</p>{pending.map(r => <article key={r.id}><b>{tr(r.category)}</b><p>{r.description}</p><button onClick={() => setRows(moderate(r.id, 'approved'))}>{tr("Aprobar")}</button><button onClick={() => setRows(moderate(r.id, 'rejected'))}>{tr("Rechazar")}</button></article>)}{!pending.length && <p>{tr("No hay reportes pendientes.")}</p>}<button onClick={() => {
                   if (confirm(tr('¿Borrar los reportes locales y restaurar los ejemplos?'))) setRows(reset());
                 }}>{tr("Restaurar demostración")}</button></div>}</>}

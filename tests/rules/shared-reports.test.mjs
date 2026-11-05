@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import nodeTest from 'node:test';
 import {initializeTestEnvironment,assertFails,assertSucceeds} from '@firebase/rules-unit-testing';
-import {doc,setDoc,getDoc,getDocs,collection,query,where,writeBatch,serverTimestamp,Timestamp,updateDoc,runTransaction,onSnapshot,setLogLevel} from 'firebase/firestore';
-import {createReportReviewer} from '../../src/report-review.js';
+import {doc,setDoc,getDoc,getDocs,collection,query,where,writeBatch,serverTimestamp,Timestamp,updateDoc,deleteDoc,runTransaction,onSnapshot,setLogLevel} from 'firebase/firestore';
+import {createReportReviewer,createReportWithdrawer} from '../../src/report-review.js';
 import {approvedRouteReports} from '../../src/logic.js';
 setLogLevel('silent');
 const results=[];
@@ -29,6 +29,8 @@ const report=(extra={})=>({category:'Otro',description:'Semáforo de prueba sin 
 async function seed(path,value){return env.withSecurityRulesDisabled(async context=>setDoc(doc(context.firestore(),path),value));}
 async function test(name,run){await nodeTest(name,{concurrency:false},async()=>{await run();results.push({name,passed:true});});}
 const review=(db,uid)=>createReportReviewer({currentUser:()=>({uid,emailVerified:true,isAnonymous:false}),reference:(c,id)=>doc(db,c,id),transaction:fn=>runTransaction(db,fn),timestamp:()=>serverTimestamp()});
+const withdraw=(db,uid)=>createReportWithdrawer({currentUser:()=>({uid,emailVerified:true,isAnonymous:false}),reference:(c,id)=>doc(db,c,id),transaction:fn=>runTransaction(db,fn),timestamp:()=>serverTimestamp()});
+const withdrawalAudit=(id,uid)=>({reportId:id,moderatorUid:uid,status:'withdrawn',withdrawnAt:serverTimestamp()});
 try {
  await env.clearFirestore();
  for(const uid of ['reviewer','reviewer-two','not-verified','anon-with-record'])await seed(`reportModerators/${uid}`,{active:true});
@@ -169,6 +171,143 @@ try {
   batch.set(doc(stranger,'submissionLimits/stranger'),{at:serverTimestamp(),lastReport:'approve-on-create'});
   await assertFails(batch.commit());
  });
- assert.equal(results.length,13,'Every real-emulator scenario must pass.');
+ await test('withdrawing an approved report removes it from another realtime client and its unchanged route',async()=>{
+  const original=(await getDoc(doc(mod,'reports/from-writer-a'))).data();
+  const approval=(await getDoc(doc(mod,'reportReviews/from-writer-a'))).data();
+  const selectedRoute=Object.freeze({id:'unchanged-withdrawal-route',points:Object.freeze([{latitude:18.474,longitude:-69.943},{latitude:18.478,longitude:-69.943}])});
+  const routeBefore=JSON.stringify(selectedRoute), events=[];let stop;
+  let initialResolve,initialReject;const initial=new Promise((resolve,reject)=>{initialResolve=resolve;initialReject=reject;});
+  let removedResolve,removedReject;const removed=new Promise((resolve,reject)=>{removedResolve=resolve;removedReject=reject;});
+  // The listener may fail before the initial server snapshot is available.
+  removed.catch(()=>{});
+  let wasPublished=false;
+  const timer=setTimeout(()=>{const error=new Error('realtime withdrawal timed out');initialReject(error);removedReject(error);},10000);
+  try{
+   stop=onSnapshot(query(collection(reader,'reports'),where('status','==','approved')),{includeMetadataChanges:true},snapshot=>{
+    const rows=snapshot.docs.map(d=>({id:d.id,...d.data()}));events.push(rows);
+    const present=rows.some(row=>row.id==='from-writer-a');
+    if(present&&!snapshot.metadata.fromCache){wasPublished=true;initialResolve(rows);}
+    if(wasPublished&&!present&&!snapshot.metadata.fromCache)removedResolve(rows);
+   },error=>{initialReject(error);removedReject(error);});
+   const before=await initial;
+   assert.ok(approvedRouteReports(selectedRoute,before).some(row=>row.id==='from-writer-a'));
+   const beforeCount=approvedRouteReports(selectedRoute,before).length;
+   assert.deepEqual(await withdraw(mod,'reviewer')('from-writer-a'),{id:'from-writer-a',status:'withdrawn'});
+   const after=await removed;
+   assert.ok(events.length>=2);
+   assert.ok(!after.some(row=>row.id==='from-writer-a'));
+   assert.equal(approvedRouteReports(selectedRoute,after).length,beforeCount-1);
+   assert.equal(JSON.stringify(selectedRoute),routeBefore);
+   assert.deepEqual((await getDoc(doc(mod,'reports/from-writer-a'))).data(),{...original,status:'withdrawn'});
+   assert.deepEqual((await getDoc(doc(mod,'reportReviews/from-writer-a'))).data(),approval);
+   await assertFails(getDoc(doc(reader,'reports/from-writer-a')));
+  }finally{clearTimeout(timer);stop?.();}
+ });
+ await test('withdrawal audit is private append only and does not permit deleting the report',async()=>{
+  const id='from-writer-a';
+  const audit=(await assertSucceeds(getDoc(doc(mod,`reportWithdrawals/${id}`)))).data();
+  assert.deepEqual(Object.keys(audit).sort(),['reportId','moderatorUid','status','withdrawnAt'].sort());
+  assert.equal(audit.reportId,id);assert.equal(audit.moderatorUid,'reviewer');assert.equal(audit.status,'withdrawn');
+  await assertFails(getDoc(doc(reader,`reportWithdrawals/${id}`)));
+  await assertFails(getDoc(doc(stranger,`reportWithdrawals/${id}`)));
+  await assertFails(getDocs(collection(reader,'reportWithdrawals')));
+  await assertFails(updateDoc(doc(mod,`reportWithdrawals/${id}`),{moderatorUid:'reviewer-two'}));
+  await assertFails(setDoc(doc(mod,`reportWithdrawals/${id}`),withdrawalAudit(id,'reviewer')));
+  await assertFails(deleteDoc(doc(mod,`reportWithdrawals/${id}`)));
+  await assertFails(deleteDoc(doc(mod,`reports/${id}`)));
+  await assertFails(updateDoc(doc(mod,`reportReviews/${id}`),{status:'rejected'}));
+ });
+ await test('only a verified active non-anonymous moderator can withdraw even with a matching audit',async()=>{
+  const contexts=[[reader,'reader'],[writer,'writer-a'],[stranger,'stranger'],[unverified,'not-verified'],[anonymousMod,'anon-with-record'],[inactive,'inactive-reviewer']];
+  for(const [index,[db,uid]] of contexts.entries()){
+   const id=`unauthorized-withdrawal-${index}`;
+   await seed(`reports/${id}`,report({status:'approved'}));
+   const batch=writeBatch(db);
+   batch.update(doc(db,`reports/${id}`),{status:'withdrawn'});
+   batch.set(doc(db,`reportWithdrawals/${id}`),withdrawalAudit(id,uid));
+   await assertFails(batch.commit());
+   assert.equal((await getDoc(doc(reader,`reports/${id}`))).data().status,'approved');
+  }
+ });
+ await test('withdrawal requires an atomic matching audit and cannot alter text location or fields',async()=>{
+  const id='guarded-withdrawal';
+  await seed(`reports/${id}`,report({status:'approved'}));
+  await assertFails(updateDoc(doc(mod,`reports/${id}`),{status:'withdrawn'}));
+  await assertFails(setDoc(doc(mod,`reportWithdrawals/${id}`),withdrawalAudit(id,'reviewer')));
+  for(const patch of [{description:'An altered incident description.'},{lat:0},{lng:0},{extraField:'not permitted'}]){
+   const batch=writeBatch(mod);
+   batch.update(doc(mod,`reports/${id}`),{status:'withdrawn',...patch});
+   batch.set(doc(mod,`reportWithdrawals/${id}`),withdrawalAudit(id,'reviewer'));
+   await assertFails(batch.commit());
+  }
+  for(const override of [{moderatorUid:'reviewer-two'},{status:'rejected'},{withdrawnAt:Timestamp.fromMillis(0)},{extraField:'not permitted'}]){
+   const batch=writeBatch(mod);
+   batch.update(doc(mod,`reports/${id}`),{status:'withdrawn'});
+   batch.set(doc(mod,`reportWithdrawals/${id}`),{...withdrawalAudit(id,'reviewer'),...override});
+   await assertFails(batch.commit());
+  }
+  assert.equal((await getDoc(doc(reader,`reports/${id}`))).data().status,'approved');
+ });
+ await test('pending rejected or withdrawn reports cannot be retired or republished by the client',async()=>{
+  for(const status of ['pending','rejected','withdrawn']){
+   const id=`not-published-${status}`;
+   await seed(`reports/${id}`,report({status}));
+   await assert.rejects(withdraw(mod,'reviewer')(id),{code:status==='withdrawn'?'moderation/already-withdrawn':'moderation/not-published'});
+   const batch=writeBatch(mod);
+   batch.update(doc(mod,`reports/${id}`),{status:'withdrawn'});
+   batch.set(doc(mod,`reportWithdrawals/${id}`),withdrawalAudit(id,'reviewer'));
+   await assertFails(batch.commit());
+  }
+  await assert.rejects(withdraw(mod,'reviewer')('from-writer-a'),{code:'moderation/already-withdrawn'});
+  await assertFails(updateDoc(doc(mod,'reports/from-writer-a'),{status:'approved'}));
+  await assert.rejects(review(mod,'reviewer')('not-published-withdrawn','approved'),{code:'moderation/already-reviewed'});
+  const republish=writeBatch(mod);
+  republish.update(doc(mod,'reports/not-published-withdrawn'),{status:'approved'});
+  republish.set(doc(mod,'reportReviews/not-published-withdrawn'),{reportId:'not-published-withdrawn',moderatorUid:'reviewer',status:'approved',reviewedAt:serverTimestamp()});
+  await assertFails(republish.commit());
+ });
+ await test('concurrent withdrawals have one winner and preserve the original approval audit',async()=>{
+  const id='withdrawal-race';
+  await seed(`reports/${id}`,report());
+  await review(mod,'reviewer')(id,'approved');
+  const approval=(await getDoc(doc(mod,`reportReviews/${id}`))).data();
+  const attempts=await Promise.allSettled([withdraw(mod,'reviewer')(id),withdraw(mod2,'reviewer-two')(id)]);
+  assert.equal(attempts.filter(value=>value.status==='fulfilled').length,1);
+  // A concurrent SDK transaction may fail rule evaluation before retrying
+  // its stale approved read. Both outcomes must leave one immutable winner.
+  assert.ok(['moderation/already-withdrawn','permission-denied'].includes(attempts.find(value=>value.status==='rejected').reason.code));
+  assert.equal((await getDoc(doc(mod,`reports/${id}`))).data().status,'withdrawn');
+  const audit=(await getDoc(doc(mod,`reportWithdrawals/${id}`))).data();
+  assert.equal(audit.moderatorUid,['reviewer','reviewer-two'][attempts.findIndex(value=>value.status==='fulfilled')]);
+  assert.deepEqual((await getDoc(doc(mod,`reportReviews/${id}`))).data(),approval);
+ });
+ await test('membership revocation blocks withdrawal with a previously authorized token',async()=>{
+  const id='withdrawal-after-revoke';
+  await seed(`reports/${id}`,report({status:'approved'}));
+  await seed('reportModerators/reviewer',{active:false});
+  try{
+   await assert.rejects(withdraw(mod,'reviewer')(id));
+   const batch=writeBatch(mod);
+   batch.update(doc(mod,`reports/${id}`),{status:'withdrawn'});
+   batch.set(doc(mod,`reportWithdrawals/${id}`),withdrawalAudit(id,'reviewer'));
+   await assertFails(batch.commit());
+   assert.equal((await getDoc(doc(reader,`reports/${id}`))).data().status,'approved');
+  }finally{await seed('reportModerators/reviewer',{active:true});}
+ });
+ await test('legacy manually published records can be withdrawn without inventing a previous review',async()=>{
+  const id='legacy-published';
+  const legacy=report({status:'approved',source:'legacy-admin',description:'Legacy synthetic content.',extraField:'legacy field to retain privately'});
+  await seed(`reports/${id}`,legacy);
+  assert.equal((await getDoc(doc(mod,`reportReviews/${id}`))).exists(),false);
+  await assertSucceeds(withdraw(mod2,'reviewer-two')(id));
+  assert.deepEqual((await getDoc(doc(mod,`reports/${id}`))).data(),{...legacy,status:'withdrawn'});
+  assert.equal((await getDoc(doc(mod,`reportReviews/${id}`))).exists(),false);
+  const audit=(await getDoc(doc(mod,`reportWithdrawals/${id}`))).data();
+  assert.deepEqual(Object.keys(audit).sort(),['reportId','moderatorUid','status','withdrawnAt'].sort());
+  assert.equal('extraField' in audit,false);
+  assert.equal(audit.moderatorUid,'reviewer-two');
+  await assertFails(getDoc(doc(reader,`reports/${id}`)));
+ });
+ assert.equal(results.length,21,'Every real-emulator scenario must pass.');
  console.log(`${results.length} REAL EMULATOR TESTS PASSED`);
 }finally{await env.cleanup();}

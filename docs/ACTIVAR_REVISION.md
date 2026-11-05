@@ -24,11 +24,21 @@ No se requieren claves privadas en el navegador, nuevos secretos de Vercel ni un
 - Modifica exclusivamente `reports/<id>.status`.
 - Crea simultáneamente `reportReviews/<id>` con `reportId`, `moderatorUid`, `status` y `reviewedAt` del servidor.
 
-Las reglas impiden aprobar sin auditoría, alterar el texto/ubicación durante la revisión, sobrescribir una decisión, publicar campos privados adicionales o autoconcederse el rol. Una revocación de membresía deja de autorizar nuevas lecturas/decisiones. El historial de revisión es privado y no se añade al documento público del reporte.
+Las reglas impiden aprobar sin auditoría, alterar el texto/ubicación durante la revisión, sobrescribir una decisión, publicar campos privados adicionales o autoconcederse el rol. Una revocación de membresía deja de autorizar nuevas lecturas privadas y decisiones. El historial de revisión es privado y no se añade al documento público del reporte.
 
 Un pendiente malformado o con datos que deben descartarse sigue siendo **rechazable**: únicamente se cambia su estado y se registra la decisión privada. No se copian esos datos a la auditoría ni se los publica. La aprobación conserva la validación del contenido en la aplicación y el esquema público estricto en las reglas; ante texto inapropiado se debe rechazar, no corregirlo silenciosamente durante la aprobación.
 
 La suscripción del público permanece filtrada por `status == approved`. Después de aprobar, otros dispositivos conectados al mismo proyecto reciben el cambio sin recargar ni volver a calcular la ruta. Los filtros de Exploración no deben excluir los reportes compartidos del contexto de una ruta.
+
+## Retirar un reporte publicado
+
+En **Moderación → Reportes publicados**, una cuenta revisora autorizada puede seleccionar **Retirar reporte** y confirmar la retirada. Se conserva el documento, pero su estado cambia de `approved` a `withdrawn`: deja de formar parte de la consulta pública, desaparece del mapa y se actualizan los conteos y listados de las rutas abiertas sin recalcularlas. No se borra ni se cambia el texto o la ubicación del incidente.
+
+`withdrawReport(id)` ejecuta una transacción independiente que vuelve a comprobar la sesión y la membresía activa. Modifica exclusivamente `reports/<id>.status` y crea, en la misma operación, `reportWithdrawals/<id>` con `reportId`, `moderatorUid`, `status: withdrawn` y `withdrawnAt` del servidor. Esta auditoría es privada e inmutable. La revisión original en `reportReviews/<id>` permanece intacta.
+
+Los reportes aprobados antiguamente desde la consola, sin una auditoría de revisión, también pueden retirarse. No es necesario validar de nuevo su contenido para ocultarlos. No se permite retirar un pendiente/rechazado, retirar dos veces, borrar el historial, cambiar otros campos ni volver a aprobar un retirado desde el cliente.
+
+**Es necesario publicar las reglas actualizadas de `firestore.rules`**, incluso si ya se publicaron las que habilitan la aprobación inicial. El despliegue del frontend no aplica este cambio en Firebase. La membresía existente `reportModerators/<UID>` con `active: true` concede ambas acciones; no hay un nuevo rol que asignar.
 
 ## Comprobación con dos dispositivos
 
@@ -37,7 +47,8 @@ La suscripción del público permanece filtrada por `status == approved`. Despu�
 3. En una sesión con membresía revisora, localizar ese pendiente y aprobarlo. Solo hacerlo si el propietario autoriza ese reporte de prueba en su proyecto real.
 4. En el dispositivo B, mantener una ruta que pase cerca del punto. Verificar que se actualicen su conteo, su marcador y el listado de incidentes sin recargar, manteniendo la ruta seleccionada.
 5. Repetir con filtros restrictivos en Explorar: el contexto compartido de la ruta no debe desaparecer por esos filtros. Un incidente alejado del corredor no debe contarse como cercano.
-6. Revocar `active` o cerrar sesión y comprobar que desaparece la bandeja privada. Un visitante sin rol no puede leer pendientes ni ejecutar decisiones.
+6. Con la cuenta revisora activa, retirar el reporte aprobado y confirmar la acción. En el dispositivo B, verificar que desaparezca su marcador y su entrada del listado, y que disminuya el conteo de reportes de esa ruta sin recargar ni cambiar la alternativa elegida.
+7. Revocar `active` o cerrar sesión y comprobar que desaparece la bandeja privada. Un visitante sin rol no puede leer pendientes ni ejecutar decisiones.
 
 Un reporte rechazado queda fuera de la suscripción pública. No se cambia el estado de reportes reales automáticamente para preparar una demostración.
 
@@ -52,6 +63,6 @@ Un reporte rechazado queda fuera de la suscripción pública. No se cambia el es
 
 ## Verificación del cambio
 
-Las pruebas de `tests/report-review.test.js` cubren cuentas verificadas, membresías, decisiones atómicas, carreras, revocación durante un reintento y separación entre reporte público/auditoría. Son pruebas con un adaptador serializable: por sí solas no demuestran la ejecución de reglas en Firebase ni una configuración real del proveedor Google.
+Las pruebas de `tests/report-review.test.js` cubren cuentas verificadas, membresías, decisiones y retiradas atómicas, carreras, revocación durante un reintento y separación entre reporte público/auditorías. Comprueban que retirar conserva la revisión inicial y también admite aprobados antiguos sin esa revisión. Son pruebas con un adaptador serializable: por sí solas no demuestran la ejecución de reglas en Firebase ni una configuración real del proveedor Google.
 
 La verificación con emulador o las comprobaciones autorizadas sobre el proyecto real deben conservar su resultado separado. No se afirma que habilitar Google, asignar un UID, publicar reglas o aprobar reportes en producción haya ocurrido por compilar este repositorio.

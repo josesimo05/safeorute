@@ -36,6 +36,16 @@ test('los fallos de credenciales comparten el mismo mensaje', () => {
   }
 });
 
+test('la retirada distingue reportes ya ocultos y permisos de moderación', () => {
+  for (const code of ['moderation/not-published', 'moderation/already-withdrawn']) {
+    assert.equal(firebaseErrorMessage({code}), 'Este reporte ya no está publicado. La lista se actualizará automáticamente.');
+  }
+  for (const code of ['permission-denied', 'firestore/permission-denied']) {
+    assert.equal(firebaseErrorMessage({code}, {moderation:true}), 'No tienes permiso para revisar reportes.');
+    assert.match(firebaseErrorMessage({code}), /guardar el reporte/);
+  }
+});
+
 test('un error desconocido usa el texto seguro y no expone mensajes del servidor', () => {
   const sensitive = 'token=private-token; internal backend response';
   for (const error of [undefined, null, sensitive, new Error(sensitive), {code: 'auth/internal-error', message: sensitive, response: {body: sensitive}}]) {
